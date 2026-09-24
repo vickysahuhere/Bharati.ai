@@ -59,16 +59,21 @@ class LocalStorage:
 
 
 class CrossEncoderReranker:
-    def __init__(self, model_name: str = "BAAI/bge-reranker-v2-m3"):
-        from sentence_transformers import CrossEncoder
+    """Lightweight, low-memory query-text ranker for 512MB RAM cloud environments."""
+
+    def __init__(self, model_name: str = ""):
         self.model_name = model_name
-        # Use CPU by default or let sentence_transformers pick device
-        self.model = CrossEncoder(model_name)
 
     def rerank(self, query: str, texts: list[str]) -> list[float]:
         if not texts:
             return []
-        pairs = [[query, text] for text in texts]
-        scores = self.model.predict(pairs)
-        # convert numpy array to list of floats
-        return [float(s) for s in scores]
+        q_tokens = set(query.lower().split())
+        scores = []
+        for text in texts:
+            if not text:
+                scores.append(0.0)
+                continue
+            t_tokens = set(text.lower().split())
+            overlap = len(q_tokens & t_tokens) / max(len(q_tokens), 1)
+            scores.append(float(overlap))
+        return scores
