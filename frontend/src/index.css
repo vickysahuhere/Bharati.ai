@@ -3,6 +3,12 @@
 @tailwind utilities;
 
 @layer base {
+  html, body {
+    height: 100%;
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
   body {
     @apply bg-[#F4F1EA] text-[#111111] antialiased selection:bg-[#E25A3F]/30 selection:text-[#111111];
     font-family: 'Inter', sans-serif;
@@ -10,6 +16,17 @@
   
   h1, h2, h3, h4, h5, h6, .font-heading {
     font-family: 'Space Grotesk', sans-serif;
+  }
+
+  /* Prevent iOS Safari from zooming when focusing inputs */
+  @media screen and (max-width: 768px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  button, a, input, [role="button"] {
+    touch-action: manipulation;
   }
 }
 

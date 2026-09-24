@@ -291,21 +291,22 @@ export default function StudentChat({ token, config }) {
       {/* Main Chat Workspace */}
       <div className="flex-1 flex flex-col h-full relative w-full min-w-0 bg-white">
         {/* Sub-header Bar */}
-        <div className="h-16 sm:h-[72px] border-b-[1.5px] border-[#111111] px-4 sm:px-6 flex items-center justify-between shrink-0 bg-[#F4F1EA] z-20">
-          <div className="flex items-center gap-3">
+        <div className="h-14 sm:h-16 border-b-[1.5px] border-[#111111] px-3 sm:px-6 flex items-center justify-between shrink-0 bg-[#F4F1EA] z-20">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button 
-              className="sm:hidden p-2 -ml-2 text-[#111111] bg-white brutal-border mr-1"
+              className="sm:hidden p-2 text-[#111111] bg-white brutal-border shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center"
               onClick={() => setSidebarOpen(true)}
+              aria-label="Open chat history"
             >
               <Menu className="w-4 h-4" />
             </button>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2 min-w-0">
               <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shrink-0" />
-              <div>
-                <h3 className="font-heading font-extrabold text-[#111111] text-xs sm:text-sm tracking-wider uppercase leading-none">
+              <div className="min-w-0">
+                <h3 className="font-heading font-extrabold text-[#111111] text-xs sm:text-sm tracking-wider uppercase leading-none truncate">
                   Bharti.ai Knowledge Engine
                 </h3>
-                <span className="text-[10px] text-[#111111]/60 font-bold uppercase tracking-widest block mt-0.5">
+                <span className="text-[9px] sm:text-[10px] text-[#111111]/60 font-bold uppercase tracking-widest block mt-0.5 truncate">
                   Universal Cross-Domain Search (Academics & Notices)
                 </span>
               </div>
@@ -314,18 +315,19 @@ export default function StudentChat({ token, config }) {
 
           <button
             onClick={() => setNoticesOpen(!noticesOpen)}
-            className="px-4 py-2 bg-white brutal-border hover:bg-[#111111] hover:text-white text-[#111111] text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition whitespace-nowrap min-h-[40px] brutal-shadow-active"
+            className="px-3 sm:px-4 py-2 bg-white brutal-border hover:bg-[#111111] hover:text-white text-[#111111] text-[11px] sm:text-xs font-bold uppercase tracking-widest flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap min-h-[38px] sm:min-h-[40px] brutal-shadow-active shrink-0 ml-2"
           >
             <Bell className="w-4 h-4 text-[#E25A3F]" />
             <span className="hidden sm:inline">Notice Board</span>
+            <span className="sm:hidden text-[10px] font-black">Notices</span>
           </button>
         </div>
 
         {/* Messages Stream */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-8 pb-36 no-scrollbar bg-white">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-8 space-y-6 sm:space-y-8 pb-36 sm:pb-36 no-scrollbar bg-white">
           {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center max-w-md mx-auto px-4">
-              <div className="w-20 h-20 bg-white brutal-border p-2 mb-6 brutal-shadow flex items-center justify-center overflow-hidden">
+            <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto px-2 py-4">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white brutal-border p-2 mb-4 sm:mb-6 brutal-shadow flex items-center justify-center overflow-hidden shrink-0">
                 <img 
                   src={config?.logo_url || "/logo.png"} 
                   alt="Bharti.ai" 
@@ -333,12 +335,34 @@ export default function StudentChat({ token, config }) {
                   onError={(e) => { e.currentTarget.style.display = 'none'; }}
                 />
               </div>
-              <h2 className="text-xl sm:text-2xl font-heading font-extrabold text-[#111111] mb-3 uppercase">
+              <h2 className="text-lg sm:text-2xl font-heading font-extrabold text-[#111111] mb-2 sm:mb-3 uppercase tracking-tight">
                 {config?.welcome_message || 'Ask Bharti.ai'}
               </h2>
-              <p className="text-sm font-medium text-[#111111]/70 leading-relaxed max-w-sm">
+              <p className="text-xs sm:text-sm font-medium text-[#111111]/70 leading-relaxed max-w-sm">
                 Ask about examination dates, syllabi, university notices, regulations, or course notes. All responses cite verified documents.
               </p>
+
+              {/* 1-Tap Quick Starter Prompts for Mobile & Desktop */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-5 sm:mt-6 w-full text-left">
+                {[
+                  { text: "Exam Datesheet & Timetable", query: "What are the latest examination schedules and datesheet notices?" },
+                  { text: "Syllabus & Course Modules", query: "What is the syllabus structure and subjects for this semester?" },
+                  { text: "Fee Deadlines & Scholarships", query: "What are the fee payment deadlines and scholarship notifications?" },
+                  { text: "Attendance & Leave Ordinance", query: "What are the official attendance requirements and leave policies?" }
+                ].map((item, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => {
+                      setInput(item.query);
+                    }}
+                    className="p-2.5 sm:p-3 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white brutal-border brutal-shadow-active transition-all text-left flex items-center justify-between group min-h-[44px]"
+                  >
+                    <span className="text-[11px] font-bold uppercase tracking-wider line-clamp-1">{item.text}</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-[#E25A3F] group-hover:translate-x-1 transition-transform shrink-0 ml-1.5" />
+                  </button>
+                ))}
+              </div>
             </div>
           ) : (
             messages.map((m, index) => (
@@ -421,7 +445,7 @@ export default function StudentChat({ token, config }) {
         </div>
 
         {/* Floating Input Dock */}
-        <div className="absolute bottom-0 w-full p-4 sm:p-6 bg-gradient-to-t from-white via-white to-transparent pt-10 z-30">
+        <div className="absolute bottom-0 w-full p-2.5 sm:p-6 bg-gradient-to-t from-white via-white/95 to-transparent pt-6 sm:pt-10 z-30 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
           
           {/* Backdrop to dismiss keywords on outside click */}
           {keywordsOpen && (
@@ -433,28 +457,28 @@ export default function StudentChat({ token, config }) {
 
           {/* Keywords Popup Drawer (100 Campus Keywords) */}
           {keywordsOpen && (
-            <div className="relative z-30 max-w-4xl mx-auto mb-3 bg-[#F4F1EA] brutal-border p-4 brutal-shadow max-h-72 overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-200">
-              <div className="flex items-center justify-between pb-3 mb-3 border-b-[1.5px] border-[#111111] sticky top-0 bg-[#F4F1EA] z-10">
-                <div className="flex items-center gap-2">
-                  <Hash className="w-4 h-4 text-[#E25A3F]" />
-                  <span className="font-heading font-extrabold text-[#111111] text-xs uppercase tracking-wider">
-                    Quick Keywords & Topics ({CAMPUS_KEYWORDS.length} Available)
+            <div className="relative z-30 max-w-4xl mx-auto mb-2 sm:mb-3 bg-[#F4F1EA] brutal-border p-3 sm:p-4 brutal-shadow max-h-56 sm:max-h-72 overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b-[1.5px] border-[#111111] sticky top-0 bg-[#F4F1EA] z-10">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Hash className="w-4 h-4 text-[#E25A3F] shrink-0" />
+                  <span className="font-heading font-extrabold text-[#111111] text-xs uppercase tracking-wider truncate">
+                    Topics ({CAMPUS_KEYWORDS.length})
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#111111]/50" />
+                    <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-[#111111]/50" />
                     <input
                       type="text"
-                      placeholder="Filter topics..."
+                      placeholder="Filter..."
                       value={keywordSearch}
                       onChange={(e) => setKeywordSearch(e.target.value)}
-                      className="pl-8 pr-3 py-1 bg-white brutal-border text-[11px] font-bold text-[#111111] outline-none w-36 sm:w-48"
+                      className="pl-7 pr-2 py-1 bg-white brutal-border text-base sm:text-[11px] font-bold text-[#111111] outline-none w-28 sm:w-44 min-h-[34px]"
                     />
                   </div>
                   <button 
                     onClick={() => setKeywordsOpen(false)}
-                    className="p-1.5 bg-white brutal-border hover:bg-[#111111] hover:text-white transition"
+                    className="p-1.5 bg-white brutal-border hover:bg-[#111111] hover:text-white transition min-h-[34px] min-w-[34px] flex items-center justify-center"
                     title="Close (ESC)"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -463,7 +487,7 @@ export default function StudentChat({ token, config }) {
               </div>
 
               {/* Keyword Pills */}
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1 sm:gap-1.5">
                 {CAMPUS_KEYWORDS.filter(k => k.toLowerCase().includes(keywordSearch.toLowerCase())).map((keyword) => {
                   const isSelected = activeTags.includes(keyword);
                   return (
@@ -478,7 +502,7 @@ export default function StudentChat({ token, config }) {
                           setInput(prev => prev ? `${prev} ${keyword}` : keyword);
                         }
                       }}
-                      className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 brutal-border transition-all flex items-center gap-1 ${
+                      className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider px-2 sm:px-2.5 py-1 brutal-border transition-all flex items-center gap-1 min-h-[32px] ${
                         isSelected 
                           ? 'bg-[#111111] text-white brutal-shadow-active' 
                           : 'bg-white hover:bg-[#E25A3F] hover:text-white text-[#111111]'
@@ -492,14 +516,14 @@ export default function StudentChat({ token, config }) {
               </div>
 
               {/* Bottom Done bar for mobile users */}
-              <div className="mt-4 pt-3 border-t border-[#111111]/20 flex items-center justify-between">
+              <div className="mt-3 pt-2.5 border-t border-[#111111]/20 flex items-center justify-between">
                 <span className="text-[10px] text-[#111111]/60 font-bold uppercase">
                   {activeTags.length} tag{activeTags.length === 1 ? '' : 's'} selected
                 </span>
                 <button
                   type="button"
                   onClick={() => setKeywordsOpen(false)}
-                  className="px-3 py-1 bg-[#111111] text-white text-[10px] font-bold uppercase tracking-wider brutal-border hover:bg-[#E25A3F] transition"
+                  className="px-3.5 py-1.5 bg-[#111111] text-white text-[10px] font-bold uppercase tracking-wider brutal-border hover:bg-[#E25A3F] transition min-h-[34px]"
                 >
                   Done
                 </button>
@@ -509,14 +533,14 @@ export default function StudentChat({ token, config }) {
 
           {/* Active Tags Bar */}
           {activeTags.length > 0 && (
-            <div className="max-w-4xl mx-auto mb-2 flex flex-wrap items-center gap-1.5 px-1">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-[#111111]/60 mr-1 flex items-center gap-1">
-                <Tag className="w-3 h-3 text-[#E25A3F]" /> Active Filters:
+            <div className="max-w-4xl mx-auto mb-2 flex flex-wrap items-center gap-1 sm:gap-1.5 px-1">
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-[#111111]/60 mr-1 flex items-center gap-1">
+                <Tag className="w-3 h-3 text-[#E25A3F]" /> Active:
               </span>
               {activeTags.map((t) => (
                 <span 
                   key={t}
-                  className="bg-[#111111] text-white text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 brutal-border flex items-center gap-1"
+                  className="bg-[#111111] text-white text-[9px] sm:text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 brutal-border flex items-center gap-1"
                 >
                   {t}
                   <button onClick={() => setActiveTags(activeTags.filter(item => item !== t))}>
@@ -526,24 +550,25 @@ export default function StudentChat({ token, config }) {
               ))}
               <button 
                 onClick={() => setActiveTags([])}
-                className="text-[9px] font-bold uppercase text-[#E25A3F] underline ml-2"
+                className="text-[9px] font-bold uppercase text-[#E25A3F] underline ml-1.5"
               >
                 Clear All
               </button>
             </div>
           )}
 
-          <form onSubmit={handleSend} className="max-w-4xl mx-auto flex gap-2 sm:gap-3 bg-white brutal-border p-2 brutal-shadow">
+          <form onSubmit={handleSend} className="max-w-4xl mx-auto flex items-center gap-1.5 sm:gap-3 bg-white brutal-border p-1.5 sm:p-2 brutal-shadow">
             {/* Clean Plus Button for Keywords */}
             <button
               type="button"
               onClick={() => setKeywordsOpen(!keywordsOpen)}
-              className={`p-3 brutal-border transition-all flex items-center justify-center shrink-0 min-h-[44px] min-w-[44px] ${
+              className={`p-2.5 sm:p-3 brutal-border transition-all flex items-center justify-center shrink-0 min-h-[44px] min-w-[44px] ${
                 keywordsOpen || activeTags.length > 0
                   ? 'bg-[#111111] text-white'
                   : 'bg-[#F4F1EA] hover:bg-[#111111] hover:text-white text-[#111111]'
               }`}
               title="Add Subject / Topic Keywords"
+              aria-label="Add topic keywords"
             >
               <Plus className={`w-5 h-5 transition-transform ${keywordsOpen ? 'rotate-45' : ''}`} />
             </button>
@@ -555,16 +580,17 @@ export default function StudentChat({ token, config }) {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') handleSend();
               }}
-              placeholder="ASK BHARTI.AI ANYTHING (EXAMS, SYLLABUS, NOTICES)..."
-              className="flex-1 px-3 sm:px-4 py-3 bg-transparent border-none focus:ring-0 focus:outline-none font-bold text-xs sm:text-sm text-[#111111] placeholder:text-[#111111]/40"
+              placeholder="Ask anything (exams, syllabus, notices)..."
+              className="flex-1 px-2.5 sm:px-4 py-2.5 sm:py-3 bg-transparent border-none focus:ring-0 focus:outline-none font-bold text-base sm:text-sm text-[#111111] placeholder:text-[#111111]/40 min-w-0"
             />
             <button
               type="submit"
               disabled={loading || !input.trim()}
-              className="px-5 sm:px-6 py-3 bg-[#E25A3F] disabled:opacity-50 text-white font-bold uppercase tracking-widest brutal-border brutal-shadow-active transition-all flex items-center justify-center min-h-[48px] shrink-0"
+              className="px-3.5 sm:px-6 py-2.5 sm:py-3 bg-[#E25A3F] disabled:opacity-40 text-white font-bold uppercase tracking-widest brutal-border brutal-shadow-active transition-all flex items-center justify-center min-h-[44px] min-w-[44px] sm:min-h-[48px] shrink-0"
+              aria-label="Send message"
             >
-              <Send className="w-5 h-5 sm:w-4 sm:h-4 sm:mr-2" />
-              <span className="hidden sm:inline">Send</span>
+              <Send className="w-4 h-4 sm:mr-1.5" />
+              <span className="hidden sm:inline text-xs">Send</span>
             </button>
           </form>
         </div>
@@ -581,7 +607,7 @@ export default function StudentChat({ token, config }) {
             className="w-full sm:w-[460px] md:w-[500px] bg-[#F4F1EA] border-l-[1.5px] border-[#111111] h-full flex flex-col brutal-shadow animate-in slide-in-from-right duration-200 relative"
           >
             {/* Sticky Header - Always Visible */}
-            <div className="p-4 sm:p-5 bg-white border-b-[1.5px] border-[#111111] flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-xs">
+            <div className="p-3.5 sm:p-5 bg-white border-b-[1.5px] border-[#111111] flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-xs pt-[max(0.875rem,env(safe-area-inset-top))]">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-[#E25A3F]/10 brutal-border flex items-center justify-center">
                   <BookOpen className="w-5 h-5 text-[#E25A3F]" />
@@ -659,10 +685,10 @@ export default function StudentChat({ token, config }) {
             </div>
 
             {/* Sticky Bottom Bar - Prominent Way Out */}
-            <div className="p-4 bg-white border-t-[1.5px] border-[#111111] shrink-0 shadow-lg sticky bottom-0 z-20">
+            <div className="p-3 sm:p-4 bg-white border-t-[1.5px] border-[#111111] shrink-0 shadow-lg sticky bottom-0 z-20 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
               <button
                 onClick={() => setSelectedSources(null)}
-                className="w-full py-3.5 bg-[#111111] hover:bg-[#E25A3F] text-white font-bold uppercase tracking-widest text-xs brutal-border brutal-shadow-active transition flex items-center justify-center gap-2 min-h-[46px]"
+                className="w-full py-3 sm:py-3.5 bg-[#111111] hover:bg-[#E25A3F] text-white font-bold uppercase tracking-widest text-xs brutal-border brutal-shadow-active transition flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[46px]"
               >
                 <X className="w-4 h-4" /> Back to Chat
               </button>
@@ -682,7 +708,7 @@ export default function StudentChat({ token, config }) {
             className="w-full sm:w-[460px] md:w-[500px] bg-[#F4F1EA] border-l-[1.5px] border-[#111111] h-full flex flex-col brutal-shadow animate-in slide-in-from-right duration-200 relative"
           >
             {/* Sticky Header */}
-            <div className="p-4 sm:p-5 bg-white border-b-[1.5px] border-[#111111] flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-xs">
+            <div className="p-3.5 sm:p-5 bg-white border-b-[1.5px] border-[#111111] flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-xs pt-[max(0.875rem,env(safe-area-inset-top))]">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-[#E25A3F]/10 brutal-border flex items-center justify-center">
                   <Bell className="w-5 h-5 text-[#E25A3F]" />
@@ -698,7 +724,7 @@ export default function StudentChat({ token, config }) {
               </div>
               <button 
                 onClick={() => setNoticesOpen(false)} 
-                className="px-3.5 py-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white text-[#111111] text-xs font-bold uppercase tracking-wider brutal-border brutal-shadow-active transition flex items-center gap-1.5"
+                className="px-3.5 py-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white text-[#111111] text-xs font-bold uppercase tracking-wider brutal-border brutal-shadow-active transition flex items-center gap-1.5 min-h-[38px]"
                 title="Close (ESC)"
               >
                 <X className="w-4 h-4" />
@@ -726,7 +752,7 @@ export default function StudentChat({ token, config }) {
                     setInput(item.query);
                     setNoticesOpen(false);
                   }}
-                  className="w-full text-left p-4 bg-white hover:bg-[#F4F1EA] brutal-border brutal-shadow-active transition space-y-1.5 group"
+                  className="w-full text-left p-3.5 sm:p-4 bg-white hover:bg-[#F4F1EA] brutal-border brutal-shadow-active transition space-y-1.5 group min-h-[44px]"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-heading font-extrabold text-xs uppercase text-[#111111] group-hover:text-[#E25A3F] transition-colors">
@@ -742,10 +768,10 @@ export default function StudentChat({ token, config }) {
             </div>
 
             {/* Sticky Bottom Bar */}
-            <div className="p-4 bg-white border-t-[1.5px] border-[#111111] shrink-0 sticky bottom-0 z-20">
+            <div className="p-3 sm:p-4 bg-white border-t-[1.5px] border-[#111111] shrink-0 sticky bottom-0 z-20 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
               <button
                 onClick={() => setNoticesOpen(false)}
-                className="w-full py-3.5 bg-[#111111] hover:bg-[#E25A3F] text-white font-bold uppercase tracking-widest text-xs brutal-border brutal-shadow-active transition flex items-center justify-center gap-2 min-h-[46px]"
+                className="w-full py-3 sm:py-3.5 bg-[#111111] hover:bg-[#E25A3F] text-white font-bold uppercase tracking-widest text-xs brutal-border brutal-shadow-active transition flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[46px]"
               >
                 <X className="w-4 h-4" /> Back to Chat
               </button>

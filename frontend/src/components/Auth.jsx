@@ -139,7 +139,7 @@ export default function Auth({ onLogin, config }) {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full px-4 py-3 bg-[#F4F1EA] brutal-border text-[#111111] focus:ring-0 focus:border-[#E25A3F] focus:outline-none text-sm min-h-[44px]"
+                className="w-full px-4 py-3 bg-[#F4F1EA] brutal-border text-[#111111] focus:ring-0 focus:border-[#E25A3F] focus:outline-none text-base sm:text-sm min-h-[46px]"
                 placeholder="Student Name"
               />
             </div>
@@ -154,7 +154,7 @@ export default function Auth({ onLogin, config }) {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-3 bg-[#F4F1EA] brutal-border text-[#111111] focus:ring-0 focus:border-[#E25A3F] focus:outline-none text-sm min-h-[44px]"
+              className="w-full px-4 py-3 bg-[#F4F1EA] brutal-border text-[#111111] focus:ring-0 focus:border-[#E25A3F] focus:outline-none text-base sm:text-sm min-h-[46px]"
               placeholder="e.g. name@college.edu"
             />
           </div>
@@ -166,7 +166,7 @@ export default function Auth({ onLogin, config }) {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-[#F4F1EA] brutal-border text-[#111111] focus:ring-0 focus:border-[#E25A3F] focus:outline-none text-sm min-h-[44px]"
+              className="w-full px-4 py-3 bg-[#F4F1EA] brutal-border text-[#111111] focus:ring-0 focus:border-[#E25A3F] focus:outline-none text-base sm:text-sm min-h-[46px]"
               placeholder="••••••••"
             />
           </div>
@@ -174,7 +174,7 @@ export default function Auth({ onLogin, config }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-4 mt-2 text-white font-bold text-sm uppercase tracking-widest bg-[#111111] hover:bg-[#E25A3F] brutal-border brutal-shadow-active transition-colors flex items-center justify-center gap-3 min-h-[48px]"
+            className="w-full py-3.5 sm:py-4 mt-2 text-white font-bold text-sm uppercase tracking-widest bg-[#111111] hover:bg-[#E25A3F] brutal-border brutal-shadow-active transition-colors flex items-center justify-center gap-2.5 min-h-[48px]"
           >
             {isSignup ? <UserPlus className="w-5 h-5" /> : <LogIn className="w-5 h-5" />}
             {loading ? 'Authenticating...' : isSignup ? 'Submit Registration' : 'Log In to Bharti.ai'}
@@ -183,7 +183,7 @@ export default function Auth({ onLogin, config }) {
 
         {/* Quick Demo Credentials for Fast Testing */}
         {!isSignup && (
-          <div className="mt-4 pt-3 border-t border-[#111111]/20">
+          <div className="mt-5 pt-3.5 border-t border-[#111111]/20">
             <span className="text-[10px] font-bold text-[#111111]/60 uppercase tracking-widest block mb-2 text-center">
               Quick Test Credentials:
             </span>
@@ -194,7 +194,7 @@ export default function Auth({ onLogin, config }) {
                   setEmail('student1@college.edu');
                   setPassword('student123');
                 }}
-                className="py-2 px-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white brutal-border text-[10px] font-bold uppercase tracking-wider transition text-center"
+                className="py-2.5 px-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white brutal-border text-[11px] font-bold uppercase tracking-wider transition text-center min-h-[44px] brutal-shadow-active flex items-center justify-center gap-1"
               >
                 👤 Fill Student
               </button>
@@ -204,7 +204,7 @@ export default function Auth({ onLogin, config }) {
                   setEmail('admin@college.edu');
                   setPassword('admin123');
                 }}
-                className="py-2 px-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white brutal-border text-[10px] font-bold uppercase tracking-wider transition text-center"
+                className="py-2.5 px-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white brutal-border text-[11px] font-bold uppercase tracking-wider transition text-center min-h-[44px] brutal-shadow-active flex items-center justify-center gap-1"
               >
                 🛡️ Fill Admin
               </button>
