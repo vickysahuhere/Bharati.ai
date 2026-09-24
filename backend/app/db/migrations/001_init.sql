@@ -1,7 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   email text UNIQUE NOT NULL,
   password_hash text NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE users (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE documents (
+CREATE TABLE IF NOT EXISTS documents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL,
   knowledge_domain text NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE documents (
   deleted_at timestamptz
 );
 
-CREATE TABLE document_versions (
+CREATE TABLE IF NOT EXISTS document_versions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   version int NOT NULL,
@@ -38,7 +38,7 @@ CREATE TABLE document_versions (
   UNIQUE (document_id, version)
 );
 
-CREATE TABLE chunks (
+CREATE TABLE IF NOT EXISTS chunks (
   id bigserial PRIMARY KEY,
   document_id uuid NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
   version_id uuid NOT NULL REFERENCES document_versions(id) ON DELETE CASCADE,
@@ -50,11 +50,11 @@ CREATE TABLE chunks (
   embedding_model text NOT NULL,
   tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', content)) STORED
 );
-CREATE INDEX chunks_embedding_idx ON chunks USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX chunks_tsv_idx ON chunks USING gin (tsv);
-CREATE INDEX chunks_version_idx ON chunks (version_id);
+CREATE INDEX IF NOT EXISTS chunks_embedding_idx ON chunks USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS chunks_tsv_idx ON chunks USING gin (tsv);
+CREATE INDEX IF NOT EXISTS chunks_version_idx ON chunks (version_id);
 
-CREATE TABLE jobs (
+CREATE TABLE IF NOT EXISTS jobs (
   id bigserial PRIMARY KEY,
   kind text NOT NULL,
   payload jsonb NOT NULL DEFAULT '{}',
@@ -65,14 +65,14 @@ CREATE TABLE jobs (
   last_error text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX jobs_queue_idx ON jobs (status, run_after);
+CREATE INDEX IF NOT EXISTS jobs_queue_idx ON jobs (status, run_after);
 
-CREATE TABLE chat_sessions (
+CREATE TABLE IF NOT EXISTS chat_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at timestamptz NOT NULL DEFAULT now()
 );
-CREATE TABLE messages (
+CREATE TABLE IF NOT EXISTS messages (
   id bigserial PRIMARY KEY,
   session_id uuid NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
   role text NOT NULL CHECK (role IN ('user','assistant')),
@@ -82,4 +82,4 @@ CREATE TABLE messages (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE TABLE settings (key text PRIMARY KEY, value jsonb NOT NULL);
+CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value jsonb NOT NULL);
