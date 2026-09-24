@@ -15,8 +15,18 @@ def hybrid_search(
     """
     Executes hybrid search combining HNSW vector similarity and tsvector full-text search with RRF.
     """
-    embedder = get_embedder()
-    query_vector = embedder.embed([query])[0]
+    with pool().connection() as conn:
+        has_chunks = conn.execute("SELECT 1 FROM chunks LIMIT 1").fetchone()
+        if not has_chunks:
+            return []
+
+    try:
+        embedder = get_embedder()
+        query_vector = embedder.embed([query])[0]
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Vector embedding failed, will use pure text search: {e}")
+        query_vector = None
     
     # Base filter clauses for document status, version status, and optional metadata
     where_clauses = [
@@ -84,30 +94,31 @@ def hybrid_search(
 
     with pool().connection() as conn:
         # Fetch vector results
-        try:
-            vec_rows = conn.execute(vec_sql, vec_params).fetchall()
-            for rank, row in enumerate(vec_rows, start=1):
-                chunk_id = row[0]
-                rrf_score = 1.0 / (rrf_k + rank)
-                chunk_scores[chunk_id] = {
-                    "id": chunk_id,
-                    "document_id": str(row[1]),
-                    "version_id": str(row[2]),
-                    "chunk_index": row[3],
-                    "content": row[4],
-                    "page": row[5],
-                    "section": row[6],
-                    "metadata": row[7],
-                    "title": row[8],
-                    "domain": row[9],
-                    "source_url": row[10],
-                    "vec_score": row[11],
-                    "fts_score": 0.0,
-                    "rrf_score": rrf_score
-                }
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Vector search failed: {e}")
+        if query_vector is not None:
+            try:
+                vec_rows = conn.execute(vec_sql, vec_params).fetchall()
+                for rank, row in enumerate(vec_rows, start=1):
+                    chunk_id = row[0]
+                    rrf_score = 1.0 / (rrf_k + rank)
+                    chunk_scores[chunk_id] = {
+                        "id": chunk_id,
+                        "document_id": str(row[1]),
+                        "version_id": str(row[2]),
+                        "chunk_index": row[3],
+                        "content": row[4],
+                        "page": row[5],
+                        "section": row[6],
+                        "metadata": row[7],
+                        "title": row[8],
+                        "domain": row[9],
+                        "source_url": row[10],
+                        "vec_score": row[11],
+                        "fts_score": 0.0,
+                        "rrf_score": rrf_score
+                    }
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Vector search failed: {e}")
 
         # Fetch FTS results
         try:

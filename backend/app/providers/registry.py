@@ -9,11 +9,16 @@ def get_llm():
     raise ValueError(f"unknown LLM_PROVIDER={s.llm_provider}")
 
 
+_embedder = None
 def get_embedder():
-    s = get_settings()
-    if s.embedding_provider == "fastembed":
-        return FastEmbedder(s.embedding_model, s.embedding_dim)
-    raise ValueError(f"unknown EMBEDDING_PROVIDER={s.embedding_provider}")
+    global _embedder
+    if _embedder is None:
+        s = get_settings()
+        if s.embedding_provider == "fastembed":
+            _embedder = FastEmbedder(s.embedding_model, s.embedding_dim)
+        else:
+            raise ValueError(f"unknown EMBEDDING_PROVIDER={s.embedding_provider}")
+    return _embedder
 
 
 def get_storage():

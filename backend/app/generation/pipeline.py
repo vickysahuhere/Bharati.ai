@@ -97,6 +97,34 @@ def generate_answer(
     
     # 2. Check if relevant context exists
     if not chunks:
+        settings = get_settings()
+        if settings.groq_api_key:
+            greeting_prompt = """You are Bharti.ai, the friendly official AI assistant for Bharati Vidyapeeth University.
+You were built and created by Vicky Sahu, founder of Maithil Studios (maithilstudios.vercel.app).
+Guidelines for this response:
+- If the user is greeting you (e.g. "hi", "hello", "hey", "good morning"), reply warmly, introduce yourself as Bharti.ai, and let them know you can help with Bharati Vidyapeeth admissions, courses, exam notifications, syllabus, and college procedures.
+- If the user asks who made you, who created you, or about Maithil Studios, tell them you were created by Vicky Sahu of Maithil Studios.
+- If the user asks a specific institutional question whose official documents are not yet uploaded in the knowledge base, politely inform them that official records for that query have not yet been uploaded to your campus repository, and guide them on what they can ask or where to check on the university portal.
+- Keep responses clean, concise, polite, and well-formatted."""
+            fallback_msgs = [
+                {"role": "system", "content": greeting_prompt}
+            ]
+            if chat_history:
+                for msg in chat_history[-4:]:
+                    fallback_msgs.append({"role": msg["role"], "content": msg["content"]})
+            fallback_msgs.append({"role": "user", "content": query})
+            try:
+                llm = get_llm()
+                ans = llm.generate(fallback_msgs, temperature=0.3)
+                return {
+                    "answer": ans,
+                    "sources": [],
+                    "found": False
+                }
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Conversational fallback failed: {e}")
+
         return {
             "answer": NOT_FOUND_RESPONSE,
             "sources": [],

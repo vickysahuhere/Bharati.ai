@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     llm_model: str = "llama-3.3-70b-versatile"
     groq_api_key: str = ""
     embedding_provider: str = "fastembed"
-    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_dim: int = 384
 
     owner_email: str = ""
