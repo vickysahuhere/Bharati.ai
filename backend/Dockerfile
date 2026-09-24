@@ -17,6 +17,9 @@ COPY backend/ /srv/
 # Copy configuration
 COPY config/ /config/
 
+# Copy built frontend SPA
+COPY frontend/dist/ /frontend/dist/
+
 ENV DATA_DIR=/srv/data
 ENV COLLEGE_CONFIG=/config/college.yaml
 ENV PORT=8000
