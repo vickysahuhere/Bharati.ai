@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Plus, MessageSquare, ThumbsUp, ThumbsDown, BookOpen, Bell, Bot, Sparkles, X, Edit2, Check, Menu, Tag, Search, Hash } from 'lucide-react';
+import { Send, Plus, MessageSquare, ThumbsUp, ThumbsDown, BookOpen, Bell, Bot, Sparkles, X, Edit2, Check, Menu, Tag, Search, Hash, Copy, ExternalLink, ArrowRight } from 'lucide-react';
 import FormattedMessage from './FormattedMessage';
 import { CAMPUS_KEYWORDS } from '../config/keywords';
 
@@ -17,6 +17,7 @@ export default function StudentChat({ token, config }) {
   const [selectedSources, setSelectedSources] = useState(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState(null);
   const messagesEndRef = useRef(null);
 
   const [editingSessionId, setEditingSessionId] = useState(null);
@@ -35,6 +36,38 @@ export default function StudentChat({ token, config }) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Global Escape key handler to close all modals/drawers
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setSelectedSources(null);
+        setNoticesOpen(false);
+        setKeywordsOpen(false);
+        setSidebarOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Lock body scroll when sources or notices drawers are open
+  useEffect(() => {
+    if (selectedSources || noticesOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedSources, noticesOpen]);
+
+  const handleCopyMessage = (id, text) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMessageId(id);
+    setTimeout(() => setCopiedMessageId(null), 2000);
+  };
 
   const fetchSessions = async () => {
     try {
@@ -322,28 +355,54 @@ export default function StudentChat({ token, config }) {
                 >
                   <FormattedMessage content={m.content} isUser={m.role === 'user'} />
 
-                  {/* Sources Drawer Link */}
-                  {m.sources && m.sources.length > 0 && (
-                    <div className="mt-4 pt-4 border-t-[1.5px] border-inherit opacity-90 flex flex-wrap items-center justify-between gap-3">
-                      <button
-                         onClick={() => setSelectedSources(m.sources)}
-                        className="text-[11px] font-bold uppercase tracking-widest flex items-center gap-1.5 min-h-[32px] px-3 py-1.5 bg-inherit border-[1.5px] border-inherit hover:opacity-75 transition"
-                      >
-                        <BookOpen className="w-4 h-4" /> {m.sources.length} Source(s)
-                      </button>
+                  {/* Assistant Action Bar: Sources, Copy, Feedback */}
+                  {m.role !== 'user' && (
+                    <div className="mt-4 pt-3 border-t-[1.5px] border-[#111111]/15 opacity-95 flex flex-wrap items-center justify-between gap-2.5">
+                      {m.sources && m.sources.length > 0 ? (
+                        <button
+                          onClick={() => setSelectedSources(m.sources)}
+                          className="text-[11px] font-bold uppercase tracking-widest flex items-center gap-1.5 min-h-[32px] px-3 py-1.5 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white text-[#111111] border-[1.5px] border-[#111111] transition shadow-xs group"
+                          title="View verified references from college documents"
+                        >
+                          <BookOpen className="w-3.5 h-3.5 text-[#E25A3F]" />
+                          <span>{m.sources.length} Verified Source{m.sources.length === 1 ? '' : 's'}</span>
+                        </button>
+                      ) : (
+                        <div />
+                      )}
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleCopyMessage(m.id || index, m.content)}
+                          className="px-2.5 py-1.5 border-[1.5px] border-[#111111] bg-white hover:bg-[#F4F1EA] text-[#111111] transition text-[11px] font-bold uppercase tracking-wider flex items-center gap-1"
+                          title="Copy Answer"
+                        >
+                          {copiedMessageId === (m.id || index) ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                              <span className="text-emerald-700">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5 text-[#111111]/70" />
+                              <span className="hidden sm:inline">Copy</span>
+                            </>
+                          )}
+                        </button>
+
                         <button
                           onClick={() => handleFeedback(m.id, 1)}
-                          className={`p-2 border-[1.5px] border-inherit hover:opacity-75 transition ${m.feedback === 1 ? 'bg-[#E25A3F] text-white border-[#E25A3F]' : 'bg-inherit'}`}
+                          className={`p-1.5 border-[1.5px] border-[#111111] transition ${m.feedback === 1 ? 'bg-[#E25A3F] text-white border-[#E25A3F]' : 'bg-white hover:bg-[#F4F1EA] text-[#111111]'}`}
+                          title="Helpful Answer"
                         >
-                          <ThumbsUp className="w-4 h-4" />
+                          <ThumbsUp className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleFeedback(m.id, -1)}
-                          className={`p-2 border-[1.5px] border-inherit hover:opacity-75 transition ${m.feedback === -1 ? 'bg-[#1D2330] text-white border-[#1D2330]' : 'bg-inherit'}`}
+                          className={`p-1.5 border-[1.5px] border-[#111111] transition ${m.feedback === -1 ? 'bg-[#1D2330] text-white border-[#1D2330]' : 'bg-white hover:bg-[#F4F1EA] text-[#111111]'}`}
+                          title="Not Helpful"
                         >
-                          <ThumbsDown className="w-4 h-4" />
+                          <ThumbsDown className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -364,10 +423,18 @@ export default function StudentChat({ token, config }) {
         {/* Floating Input Dock */}
         <div className="absolute bottom-0 w-full p-4 sm:p-6 bg-gradient-to-t from-white via-white to-transparent pt-10 z-30">
           
+          {/* Backdrop to dismiss keywords on outside click */}
+          {keywordsOpen && (
+            <div 
+              className="fixed inset-0 z-20 cursor-default"
+              onClick={() => setKeywordsOpen(false)}
+            />
+          )}
+
           {/* Keywords Popup Drawer (100 Campus Keywords) */}
           {keywordsOpen && (
-            <div className="max-w-4xl mx-auto mb-3 bg-[#F4F1EA] brutal-border p-4 brutal-shadow max-h-64 overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-200">
-              <div className="flex items-center justify-between pb-3 mb-3 border-b-[1.5px] border-[#111111]">
+            <div className="relative z-30 max-w-4xl mx-auto mb-3 bg-[#F4F1EA] brutal-border p-4 brutal-shadow max-h-72 overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="flex items-center justify-between pb-3 mb-3 border-b-[1.5px] border-[#111111] sticky top-0 bg-[#F4F1EA] z-10">
                 <div className="flex items-center gap-2">
                   <Hash className="w-4 h-4 text-[#E25A3F]" />
                   <span className="font-heading font-extrabold text-[#111111] text-xs uppercase tracking-wider">
@@ -387,7 +454,8 @@ export default function StudentChat({ token, config }) {
                   </div>
                   <button 
                     onClick={() => setKeywordsOpen(false)}
-                    className="p-1 bg-white brutal-border hover:bg-[#111111] hover:text-white transition"
+                    className="p-1.5 bg-white brutal-border hover:bg-[#111111] hover:text-white transition"
+                    title="Close (ESC)"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
@@ -421,6 +489,20 @@ export default function StudentChat({ token, config }) {
                     </button>
                   );
                 })}
+              </div>
+
+              {/* Bottom Done bar for mobile users */}
+              <div className="mt-4 pt-3 border-t border-[#111111]/20 flex items-center justify-between">
+                <span className="text-[10px] text-[#111111]/60 font-bold uppercase">
+                  {activeTags.length} tag{activeTags.length === 1 ? '' : 's'} selected
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setKeywordsOpen(false)}
+                  className="px-3 py-1 bg-[#111111] text-white text-[10px] font-bold uppercase tracking-wider brutal-border hover:bg-[#E25A3F] transition"
+                >
+                  Done
+                </button>
               </div>
             </div>
           )}
@@ -488,44 +570,185 @@ export default function StudentChat({ token, config }) {
         </div>
       </div>
 
-      {/* Sources Modal */}
+      {/* Sources Drawer Modal */}
       {selectedSources && (
-        <div className="fixed inset-0 bg-black/40 z-[60] flex justify-end">
-          <div className="w-full sm:w-[400px] bg-[#F4F1EA] border-l-[1.5px] border-[#111111] h-full p-6 overflow-y-auto brutal-shadow flex flex-col animate-in slide-in-from-right-full duration-300">
-            <div className="flex items-center justify-between mb-8 pb-4 border-b-[1.5px] border-[#111111]">
-              <h3 className="font-heading font-bold text-[#111111] text-lg uppercase flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-[#E25A3F]" /> References
-              </h3>
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[70] flex justify-end animate-in fade-in duration-200"
+          onClick={() => setSelectedSources(null)}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:w-[460px] md:w-[500px] bg-[#F4F1EA] border-l-[1.5px] border-[#111111] h-full flex flex-col brutal-shadow animate-in slide-in-from-right duration-200 relative"
+          >
+            {/* Sticky Header - Always Visible */}
+            <div className="p-4 sm:p-5 bg-white border-b-[1.5px] border-[#111111] flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#E25A3F]/10 brutal-border flex items-center justify-center">
+                  <BookOpen className="w-5 h-5 text-[#E25A3F]" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-extrabold text-[#111111] text-base uppercase tracking-tight">
+                    Verified Sources
+                  </h3>
+                  <p className="text-[11px] text-[#111111]/60 font-bold uppercase tracking-wider">
+                    {selectedSources.length} cited reference{selectedSources.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+              </div>
               <button 
                 onClick={() => setSelectedSources(null)} 
-                className="p-2 text-[#111111] bg-white brutal-border brutal-shadow-active transition"
+                className="px-3.5 py-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white text-[#111111] text-xs font-bold uppercase tracking-wider brutal-border brutal-shadow-active transition flex items-center gap-1.5"
+                title="Close (ESC)"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
+                <span>Close</span>
+                <span className="text-[9px] opacity-60 ml-0.5 sm:inline hidden">(ESC)</span>
               </button>
             </div>
-            <div className="space-y-6 flex-1">
+
+            {/* Scrollable Sources List */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
               {selectedSources.map((src, i) => (
-                <div key={i} className="p-5 bg-white brutal-border brutal-shadow text-xs space-y-3">
-                  <h4 className="font-bold text-[#1D2330] text-sm uppercase leading-snug">{src.title}</h4>
-                  <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t-[1.5px] border-[#111111]">
-                    <p className="text-[#111111]/60 font-bold uppercase tracking-widest text-[10px]">Domain:<br/><span className="text-[#111111] text-xs">{src.domain}</span></p>
-                    {src.page && <p className="text-[#111111]/60 font-bold uppercase tracking-widest text-[10px]">Page:<br/><span className="text-[#111111] text-xs">{src.page}</span></p>}
-                    {src.section && <p className="text-[#111111]/60 font-bold uppercase tracking-widest text-[10px] col-span-2">Section:<br/><span className="text-[#111111] text-xs">{src.section}</span></p>}
-                    {src.source_url && (
-                      <div className="col-span-2 mt-2 pt-2 border-t-[1.5px] border-[#111111]/20">
-                        <a 
-                          href={src.source_url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="inline-block text-[11px] font-bold text-[#E25A3F] uppercase tracking-wider hover:underline"
-                        >
-                          View Original Document ↗
-                        </a>
+                <div key={i} className="p-4 bg-white brutal-border brutal-shadow text-xs space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 bg-[#111111] text-white">
+                      Source #{i + 1}
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#E25A3F] bg-[#E25A3F]/10 px-2 py-0.5 border border-[#E25A3F]/30">
+                      {src.domain || 'Academics'}
+                    </span>
+                  </div>
+                  
+                  <h4 className="font-bold text-[#111111] text-sm uppercase leading-snug">
+                    {src.title}
+                  </h4>
+
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t-[1.5px] border-[#111111]/15 text-[11px]">
+                    {src.page && (
+                      <div className="bg-[#F4F1EA] p-2 border border-[#111111]/10">
+                        <span className="text-[9px] font-bold text-[#111111]/50 uppercase tracking-widest block">Page</span>
+                        <span className="font-bold text-[#111111]">{src.page}</span>
+                      </div>
+                    )}
+                    {src.section && (
+                      <div className="bg-[#F4F1EA] p-2 border border-[#111111]/10 col-span-2 sm:col-span-1">
+                        <span className="text-[9px] font-bold text-[#111111]/50 uppercase tracking-widest block">Section</span>
+                        <span className="font-bold text-[#111111] truncate block">{src.section}</span>
                       </div>
                     )}
                   </div>
+
+                  {src.source_url ? (
+                    <div className="pt-2 border-t border-[#111111]/10">
+                      <a 
+                        href={src.source_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#E25A3F] uppercase tracking-wider hover:underline"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" /> View Original Document ↗
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="pt-2 border-t border-[#111111]/10 text-[10px] text-[#111111]/50 font-semibold uppercase tracking-wider">
+                      Verified Internal College Record
+                    </div>
+                  )}
                 </div>
               ))}
+            </div>
+
+            {/* Sticky Bottom Bar - Prominent Way Out */}
+            <div className="p-4 bg-white border-t-[1.5px] border-[#111111] shrink-0 shadow-lg sticky bottom-0 z-20">
+              <button
+                onClick={() => setSelectedSources(null)}
+                className="w-full py-3.5 bg-[#111111] hover:bg-[#E25A3F] text-white font-bold uppercase tracking-widest text-xs brutal-border brutal-shadow-active transition flex items-center justify-center gap-2 min-h-[46px]"
+              >
+                <X className="w-4 h-4" /> Back to Chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notice Board Drawer Modal */}
+      {noticesOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[70] flex justify-end animate-in fade-in duration-200"
+          onClick={() => setNoticesOpen(false)}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:w-[460px] md:w-[500px] bg-[#F4F1EA] border-l-[1.5px] border-[#111111] h-full flex flex-col brutal-shadow animate-in slide-in-from-right duration-200 relative"
+          >
+            {/* Sticky Header */}
+            <div className="p-4 sm:p-5 bg-white border-b-[1.5px] border-[#111111] flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#E25A3F]/10 brutal-border flex items-center justify-center">
+                  <Bell className="w-5 h-5 text-[#E25A3F]" />
+                </div>
+                <div>
+                  <h3 className="font-heading font-extrabold text-[#111111] text-base uppercase tracking-tight">
+                    Campus Notice Board
+                  </h3>
+                  <p className="text-[11px] text-[#111111]/60 font-bold uppercase tracking-wider">
+                    Official Announcements & Inquiries
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setNoticesOpen(false)} 
+                className="px-3.5 py-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white text-[#111111] text-xs font-bold uppercase tracking-wider brutal-border brutal-shadow-active transition flex items-center gap-1.5"
+                title="Close (ESC)"
+              >
+                <X className="w-4 h-4" />
+                <span>Close</span>
+              </button>
+            </div>
+
+            {/* Quick Inquiries List */}
+            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-3">
+              <p className="text-xs font-bold uppercase tracking-wider text-[#111111]/70 mb-3">
+                Click any topic to query verified university notices & circulars:
+              </p>
+
+              {[
+                { title: "Examination Schedule & Timetable", desc: "Datesheets, exam timing & admit card notifications", query: "What are the latest examination schedules and datesheet notices?" },
+                { title: "Results & Re-Evaluation Rules", desc: "Grade publication, scrutiny procedure & marksheet distribution", query: "What are the latest university results and re-evaluation rules?" },
+                { title: "Semester Fee & Scholarship Deadlines", desc: "Tuition deadlines, fine waivers & state/central scholarship circulars", query: "What are the fee payment deadlines and scholarship notifications?" },
+                { title: "Academic Calendar & Holidays", desc: "Semester commencement, vacations, exam windows & gazetted holidays", query: "Show me the university academic calendar and holiday list" },
+                { title: "Attendance & Medical Leave Ordinance", desc: "75% attendance criteria, medical certificate submission & condonation rules", query: "What are the official attendance and medical leave regulations?" }
+              ].map((item, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setInput(item.query);
+                    setNoticesOpen(false);
+                  }}
+                  className="w-full text-left p-4 bg-white hover:bg-[#F4F1EA] brutal-border brutal-shadow-active transition space-y-1.5 group"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-heading font-extrabold text-xs uppercase text-[#111111] group-hover:text-[#E25A3F] transition-colors">
+                      {item.title}
+                    </span>
+                    <ArrowRight className="w-4 h-4 text-[#111111]/40 group-hover:text-[#E25A3F] group-hover:translate-x-1 transition-all shrink-0" />
+                  </div>
+                  <p className="text-[11px] text-[#111111]/70 font-medium">
+                    {item.desc}
+                  </p>
+                </button>
+              ))}
+            </div>
+
+            {/* Sticky Bottom Bar */}
+            <div className="p-4 bg-white border-t-[1.5px] border-[#111111] shrink-0 sticky bottom-0 z-20">
+              <button
+                onClick={() => setNoticesOpen(false)}
+                className="w-full py-3.5 bg-[#111111] hover:bg-[#E25A3F] text-white font-bold uppercase tracking-widest text-xs brutal-border brutal-shadow-active transition flex items-center justify-center gap-2 min-h-[46px]"
+              >
+                <X className="w-4 h-4" /> Back to Chat
+              </button>
             </div>
           </div>
         </div>

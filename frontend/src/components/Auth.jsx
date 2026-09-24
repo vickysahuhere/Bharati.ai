@@ -181,6 +181,37 @@ export default function Auth({ onLogin, config }) {
           </button>
         </form>
 
+        {/* Quick Demo Credentials for Fast Testing */}
+        {!isSignup && (
+          <div className="mt-4 pt-3 border-t border-[#111111]/20">
+            <span className="text-[10px] font-bold text-[#111111]/60 uppercase tracking-widest block mb-2 text-center">
+              Quick Test Credentials:
+            </span>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('student1@college.edu');
+                  setPassword('student123');
+                }}
+                className="py-2 px-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white brutal-border text-[10px] font-bold uppercase tracking-wider transition text-center"
+              >
+                👤 Fill Student
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('admin@college.edu');
+                  setPassword('admin123');
+                }}
+                className="py-2 px-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white brutal-border text-[10px] font-bold uppercase tracking-wider transition text-center"
+              >
+                🛡️ Fill Admin
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="mt-6 text-center border-t-[1.5px] border-[#111111] pt-4">
           <button
             onClick={() => { setIsSignup(!isSignup); setError(''); setMessage(''); }}
