@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1,
+    "question": "What is the passing criteria for Unit 2 Mathematical Foundations?",
+    "expected_document_title": "Mathematical Foundations Syllabus",
+    "domain": "academic"
+  },
+  {
+    "id": 2,
+    "question": "When is the deadline for autumn mid-term examination fee submission?",
+    "expected_document_title": "Autumn Examination Notice 2026",
+    "domain": "notices"
+  },
+  {
+    "id": 3,
+    "question": "What is the policy for quantum teleportation in campus hostel?",
+    "expected_document_title": null,
+    "should_be_found": false
+  }
+]

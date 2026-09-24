@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#F4F1EA] text-[#111111] antialiased selection:bg-[#E25A3F]/30 selection:text-[#111111];
+    font-family: 'Inter', sans-serif;
+  }
+  
+  h1, h2, h3, h4, h5, h6, .font-heading {
+    font-family: 'Space Grotesk', sans-serif;
+  }
+}
+
+@layer utilities {
+  .brutal-shadow {
+    box-shadow: 4px 4px 0px 0px #111111;
+  }
+  
+  .brutal-shadow-hover:hover {
+    box-shadow: 6px 6px 0px 0px #111111;
+    transform: translate(-2px, -2px);
+  }
+  
+  .brutal-shadow-active:active {
+    box-shadow: 2px 2px 0px 0px #111111;
+    transform: translate(2px, 2px);
+  }
+  
+  .brutal-border {
+    @apply border-[1.5px] border-[#111111];
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Custom Scrollbar for sleek UI */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #F4F1EA;
+  border-left: 1px solid #111111;
+}
+::-webkit-scrollbar-thumb {
+  background: #111111;
+  border: 1px solid #F4F1EA;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #E25A3F;
+}

@@ -1,0 +1,15 @@
+# One file per college deployment. Copy to college.yaml.
+college_name: Example College
+assistant_name: Campus AI
+welcome_message: Ask your College Assistant
+logo_url: ""
+primary_color: "#1d4ed8"
+domain: ai.example-college.edu
+supported_languages: [en, hi]
+knowledge_domains: [academic, notices, examinations, events, administration, placements, faq]
+feature_flags:
+  guest_access: false
+  feedback: true
+retrieval:
+  top_k: 8
+  min_score: 0.25
