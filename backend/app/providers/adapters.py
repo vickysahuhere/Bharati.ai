@@ -19,7 +19,11 @@ class GroqLLM:
                 timeout=60,
             )
             if r.status_code == 429 and attempt < max_retries - 1:
-                time.sleep(2 ** attempt)
+                try:
+                    retry_after = float(r.headers.get("retry-after", 2.5))
+                except (ValueError, TypeError):
+                    retry_after = 2.5
+                time.sleep(max(retry_after, 2.0))
                 continue
             r.raise_for_status()
             return r.json()["choices"][0]["message"]["content"]
