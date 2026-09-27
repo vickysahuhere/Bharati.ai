@@ -1,3 +1,9 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["ONNXRUNTIME_EXECUTION_MODE"] = "ORT_SEQUENTIAL"
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.config import get_settings, get_college_config
@@ -13,8 +19,8 @@ from worker.main import run_forever
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_migrations(get_settings().embedding_dim)
-    # Start Postgres-backed ingestion worker thread
-    worker_thread = threading.Thread(target=run_forever, daemon=True, name="BhartiIngestionWorker")
+    # Start Postgres-backed ingestion worker thread with 5s poll interval to save CPU/RAM
+    worker_thread = threading.Thread(target=lambda: run_forever(poll=5.0), daemon=True, name="BhartiIngestionWorker")
     worker_thread.start()
     yield
 

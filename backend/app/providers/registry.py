@@ -1,5 +1,5 @@
 from app.core.config import get_settings
-from .adapters import GroqLLM, FastEmbedder, LocalStorage
+from .adapters import GroqLLM, LocalStorage, CrossEncoderReranker
 
 
 def get_llm():
@@ -13,11 +13,12 @@ _embedder = None
 def get_embedder():
     global _embedder
     if _embedder is None:
-        s = get_settings()
-        if s.embedding_provider == "fastembed":
-            _embedder = FastEmbedder(s.embedding_model, s.embedding_dim)
-        else:
-            raise ValueError(f"unknown EMBEDDING_PROVIDER={s.embedding_provider}")
+        from worker.ingestion import get_embed_model
+        model = get_embed_model()
+        class SharedFastEmbedder:
+            def embed(self, texts):
+                return [v.tolist() for v in model.embed(texts)]
+        _embedder = SharedFastEmbedder()
     return _embedder
 
 
@@ -28,7 +29,6 @@ _reranker = None
 def get_reranker():
     global _reranker
     if _reranker is None:
-        from .adapters import CrossEncoderReranker
-        # Use lightweight local reranker
-        _reranker = CrossEncoderReranker("BAAI/bge-reranker-v2-m3")
+        _reranker = CrossEncoderReranker()
     return _reranker
+
