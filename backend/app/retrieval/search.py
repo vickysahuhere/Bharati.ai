@@ -1,4 +1,5 @@
 from typing import List, Dict, Any, Optional
+import json
 from app.db.session import pool
 from app.providers.registry import get_embedder
 
@@ -43,8 +44,9 @@ def hybrid_search(
         where_clauses.append("(d.department IS NULL OR d.department = %s)")
         params.append(department)
     if semester:
-        where_clauses.append("(d.semester IS NULL OR d.semester = %s)")
+        where_clauses.append("(d.semester IS NULL OR d.semester = %s OR (c.metadata->'semesters' IS NOT NULL AND c.metadata->'semesters' @> %s::jsonb))")
         params.append(semester)
+        params.append(json.dumps([semester]))
     if subject:
         where_clauses.append("(d.subject IS NULL OR d.subject = %s)")
         params.append(subject)
@@ -70,7 +72,7 @@ def hybrid_search(
         LIMIT %s
     """
 
-    # 2. Full-Text Search Query
+    # 2. Full-Text Search Query (indexed content + document metadata + chunk section)
     fts_params = [query] + params + [query, top_k * 2]
     fts_sql = f"""
         SELECT 
@@ -79,14 +81,14 @@ def hybrid_search(
             d.department, d.semester, d.subject, d.document_type,
             dv.effective_date, dv.expiration_date,
             ts_rank_cd(
-                c.tsv || to_tsvector('simple', coalesce(d.title, '') || ' ' || coalesce(d.subject, '') || ' ' || coalesce(d.department, '')),
+                c.tsv || to_tsvector('simple', coalesce(d.title, '') || ' ' || coalesce(d.subject, '') || ' ' || coalesce(d.department, '') || ' ' || coalesce(c.section, '')),
                 plainto_tsquery('simple', %s)
             ) AS score
         FROM chunks c
         JOIN document_versions dv ON c.version_id = dv.id
         JOIN documents d ON c.document_id = d.id
         WHERE {where_sql} AND (
-            c.tsv || to_tsvector('simple', coalesce(d.title, '') || ' ' || coalesce(d.subject, '') || ' ' || coalesce(d.department, ''))
+            c.tsv || to_tsvector('simple', coalesce(d.title, '') || ' ' || coalesce(d.subject, '') || ' ' || coalesce(d.department, '') || ' ' || coalesce(c.section, ''))
         ) @@ plainto_tsquery('simple', %s)
         ORDER BY score DESC
         LIMIT %s

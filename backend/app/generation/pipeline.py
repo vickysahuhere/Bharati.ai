@@ -13,6 +13,7 @@ Core Directives:
 2. TEMPORAL & SCHEDULE REASONING:
    - Pay special attention to dates, validity periods, examination timetables, shift timings, room numbers, and deadlines.
    - When asked about datesheets, schedules, or timelines, format your answer clearly with structured tables or bullet lists including: Subject/Course, Exam Date, Timing, Room/Venue, and Course Code.
+   - SEMESTER DISCRIMINATION: When the user asks about a specific semester (e.g., BCA Semester 1, Semester 3, or Semester 5), strictly provide the timetable and details for that requested semester. Do NOT mix up subjects from other semesters. If the user asks for all semesters, group each semester under its own clear heading and table.
    - Explicitly mention the validity period or issue date of the notice/schedule if available.
    - If an event is upcoming or past based on dates, inform the user clearly.
 3. CONVERSATIONAL & PROACTIVE: Speak warmly and professionally. If the user asks about an exam or syllabus, highlight important exam rules, reporting times, required documents (admit cards, ID cards), and rules on electronic devices mentioned in the context.
@@ -139,10 +140,11 @@ Guidelines for this response:
     # 3. Build fenced context and citations
     context_blocks = []
     sources = []
-    seen_doc_ids = set()
+    seen_cite_keys = set()
     
     for i, c in enumerate(chunks, start=1):
-        if c["document_id"] not in seen_doc_ids:
+        cite_key = (c["document_id"], c.get("page"), c.get("section"))
+        if cite_key not in seen_cite_keys:
             citation = {
                 "document_id": c["document_id"],
                 "title": c["title"],
@@ -156,7 +158,7 @@ Guidelines for this response:
                 "semester": c.get("semester")
             }
             sources.append(citation)
-            seen_doc_ids.add(c["document_id"])
+            seen_cite_keys.add(cite_key)
         
         valid_from = c.get("effective_date") or "Published"
         valid_to = c.get("expiration_date") or "Ongoing"
@@ -164,11 +166,20 @@ Guidelines for this response:
         dates_list = meta.get("dates", [])
         dates_str = ", ".join(dates_list[:6]) if dates_list else "None specified"
         dept = c.get("department") or "University-wide"
-        sem = f"Semester {c['semester']}" if c.get("semester") else "All Semesters"
+        
+        chunk_sems = meta.get("semesters") or []
+        if chunk_sems:
+            sem = f"Semesters: {', '.join(str(s) for s in chunk_sems)}"
+        elif c.get("semester"):
+            sem = f"Semester {c['semester']}"
+        else:
+            sem = "All Semesters"
+            
+        sec = f" | Section: {c['section']}" if c.get("section") else ""
         doc_type = (c.get("document_type") or c.get("domain") or "Official Notice").upper()
 
         block = (
-            f"[Source {i}: {c['title']} | Type: {doc_type} | Dept: {dept} | {sem} | "
+            f"[Source {i}: {c['title']} | Type: {doc_type} | Dept: {dept} | {sem}{sec} | "
             f"Validity Period: {valid_from} to {valid_to} | Key Dates: {dates_str} | Page {c['page'] or 1}]\n"
             f"{c['content']}"
         )

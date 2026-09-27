@@ -73,34 +73,136 @@ def get_embed_model():
 
 storage = StorageProvider()
 
+ROMAN_SEMESTERS = {
+    'i': 1, 'ii': 2, 'iii': 3, 'iv': 4, 'v': 5, 'vi': 6, 'vii': 7, 'viii': 8
+}
+
+def extract_semesters(text: str) -> List[int]:
+    found = set()
+    # 1. "Semester 1", "Sem 3", "Sem. 5", "Semester III"
+    for m in re.finditer(r'\b(?:Semester|Sem\.?)\s*([1-8]|I|II|III|IV|V|VI|VII|VIII)\b', text, re.IGNORECASE):
+        val = m.group(1).lower()
+        if val in ROMAN_SEMESTERS:
+            found.add(ROMAN_SEMESTERS[val])
+        elif val.isdigit():
+            found.add(int(val))
+            
+    # 2. "1st Semester", "3rd Sem", "5th Semester", "1st Sem"
+    for m in re.finditer(r'\b([1-8])(?:st|nd|rd|th)?\s*(?:Semester|Sem)\b', text, re.IGNORECASE):
+        found.add(int(m.group(1)))
+        
+    # 3. Course codes: "BCA-101", "BCA-302", "BCA-504", "MCA-101", "CS-301"
+    for m in re.finditer(r'\b[A-Za-z]{2,5}[-_ ]?([1-8])\d{2}\b', text):
+        found.add(int(m.group(1)))
+        
+    return sorted(list(found))
+
+HEADING_KEYWORDS = [
+    'semester', 'sem', 'datesheet', 'timetable', 'examination', 'guidelines',
+    'rules', 'instructions', 'ordinance', 'admissions', 'eligibility', 'syllabus',
+    'notification', 'notice', 'schedule'
+]
+
+def clean_title(title: str) -> str:
+    cleaned = re.sub(r'^[0-9\.\-\:\#\*\s]+', '', title).strip()
+    return cleaned[:100]
+
+def detect_section_title(lines: List[str], fallback_page_num: int = 1) -> str:
+    # 1. Look for explicit headings containing keywords
+    for line in lines[:15]:
+        line_clean = line.strip()
+        if not line_clean or len(line_clean) < 4 or len(line_clean) > 120:
+            continue
+        line_lower = line_clean.lower()
+        if any(kw in line_lower for kw in HEADING_KEYWORDS):
+            return clean_title(line_clean)
+            
+    # 2. Look for lines in ALL CAPS or starting with '#' (markdown headings)
+    for line in lines[:10]:
+        line_clean = line.strip()
+        if line_clean.startswith('#'):
+            return clean_title(line_clean.lstrip('#').strip())
+        if line_clean.isupper() and 6 <= len(line_clean) <= 90:
+            return clean_title(line_clean)
+            
+    # 3. First non-empty substantial line
+    for line in lines[:5]:
+        line_clean = line.strip()
+        if len(line_clean) >= 6:
+            return clean_title(line_clean)
+            
+    return f"Page {fallback_page_num} Overview"
+
 def extract_and_chunk(file_path: str, mime_type: str, chunk_size: int = 500, overlap: int = 50) -> list[dict]:
     chunks = []
     file_path_str = str(file_path)
     
+    # 1. Handle Images (OCR)
     if mime_type and mime_type.startswith('image/'):
         from PIL import Image
         import pytesseract
         img = Image.open(file_path_str)
         text = pytesseract.image_to_string(img, lang='eng+hin')
+        lines = [l.strip() for l in text.split('\n') if l.strip()]
+        sec = detect_section_title(lines, 1)
+        sems = extract_semesters(text)
         words = text.split()
-        i = 0
-        while i < len(words):
-            chunks.append({"content": " ".join(words[i:i + chunk_size]), "page": 1})
-            i += chunk_size - overlap
+        if len(words) <= chunk_size + 60:
+            chunks.append({"content": text, "page": 1, "section": sec, "semesters": sems})
+        else:
+            i = 0
+            while i < len(words):
+                slice_text = " ".join(words[i:i + chunk_size])
+                chunks.append({
+                    "content": slice_text, 
+                    "page": 1, 
+                    "section": sec, 
+                    "semesters": extract_semesters(slice_text)
+                })
+                i += chunk_size - overlap
         return chunks
 
-    # Handle plain text files
+    # 2. Handle Plain Text files
     if file_path_str.endswith('.txt') or (mime_type and mime_type.startswith('text/')):
         with open(file_path_str, 'r', encoding='utf-8', errors='ignore') as f:
             text = f.read()
-        words = text.split()
-        i = 0
-        while i < len(words):
-            chunks.append({"content": " ".join(words[i:i + chunk_size]), "page": 1})
-            i += chunk_size - overlap
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+        current_chunk_blocks = []
+        current_words_count = 0
+        current_section = None
+        
+        for p in paragraphs:
+            p_lines = [l.strip() for l in p.split('\n') if l.strip()]
+            p_sec = detect_section_title(p_lines, 1)
+            p_words = p.split()
+            
+            if current_chunk_blocks and (current_words_count + len(p_words) > chunk_size or (p_sec != current_section and any(kw in p_lines[0].lower() for kw in HEADING_KEYWORDS))):
+                block_content = "\n\n".join(current_chunk_blocks)
+                chunks.append({
+                    "content": block_content,
+                    "page": 1,
+                    "section": current_section or "Main Section",
+                    "semesters": extract_semesters(block_content)
+                })
+                current_chunk_blocks = []
+                current_words_count = 0
+                
+            if not current_chunk_blocks:
+                current_section = p_sec
+            current_chunk_blocks.append(p)
+            current_words_count += len(p_words)
+            
+        if current_chunk_blocks:
+            block_content = "\n\n".join(current_chunk_blocks)
+            chunks.append({
+                "content": block_content,
+                "page": 1,
+                "section": current_section or "Main Section",
+                "semesters": extract_semesters(block_content)
+            })
         return chunks
 
-    # Handle Microsoft Word (.docx) documents
+    # 3. Handle Microsoft Word (.docx) documents
     if file_path_str.endswith('.docx') or (mime_type and 'wordprocessingml' in mime_type):
         import docx
         doc = docx.Document(file_path_str)
@@ -115,19 +217,31 @@ def extract_and_chunk(file_path: str, mime_type: str, chunk_size: int = 500, ove
                     blocks.append(row_str)
         
         full_text = "\n\n".join(blocks)
+        doc_lines = [b for b in blocks if len(b) < 120]
+        sec = detect_section_title(doc_lines, 1)
         words = full_text.split()
-        i = 0
-        page_approx = 1
-        while i < len(words):
-            chunks.append({"content": " ".join(words[i:i + chunk_size]), "page": page_approx})
-            i += chunk_size - overlap
-            if len(chunks) % 2 == 0:
-                page_approx += 1
+        if len(words) <= chunk_size + 60:
+            chunks.append({"content": full_text, "page": 1, "section": sec, "semesters": extract_semesters(full_text)})
+        else:
+            i = 0
+            page_approx = 1
+            while i < len(words):
+                slice_text = " ".join(words[i:i + chunk_size])
+                slice_lines = [l.strip() for l in slice_text.split('\n') if l.strip()]
+                slice_sec = detect_section_title(slice_lines, page_approx)
+                chunks.append({
+                    "content": slice_text,
+                    "page": page_approx,
+                    "section": slice_sec,
+                    "semesters": extract_semesters(slice_text)
+                })
+                i += chunk_size - overlap
+                if len(chunks) % 2 == 0:
+                    page_approx += 1
         return chunks
         
+    # 4. Handle PDF Documents (Page & Section-Aware)
     doc = fitz.open(file_path)
-    current_chunk = []
-    current_page = 1
     
     for page_num in range(len(doc)):
         page = doc[page_num]
@@ -145,45 +259,51 @@ def extract_and_chunk(file_path: str, mime_type: str, chunk_size: int = 500, ove
                 import io
                 img = Image.open(io.BytesIO(image_bytes))
                 page_text += pytesseract.image_to_string(img, lang='eng+hin') + "\n"
-            blocks = [{"text": page_text}]
+            blocks = [{"text": page_text.strip()}]
         else:
             raw_blocks = page.get_text("blocks")
             # Sort top to bottom, left to right
             raw_blocks.sort(key=lambda b: (b[1], b[0]))
-            blocks = [{"text": b[4]} for b in raw_blocks if b[6] == 0]
+            blocks = [{"text": b[4].strip()} for b in raw_blocks if b[6] == 0 and b[4].strip()]
             
-        for b in blocks:
-            block_text = b["text"].strip()
-            if not block_text:
-                continue
-                
-            block_words = block_text.split()
+        if not blocks:
+            continue
             
-            # If block is huge, split it
-            if len(block_words) > chunk_size:
-                if current_chunk:
-                    chunks.append({"content": " ".join(current_chunk), "page": current_page})
-                    current_chunk = []
-                
-                i = 0
-                while i < len(block_words):
-                    chunks.append({"content": " ".join(block_words[i:i + chunk_size]), "page": actual_page_num})
-                    i += chunk_size - overlap
-            else:
-                # If adding block exceeds size, flush
-                if len(current_chunk) + len(block_words) > chunk_size:
-                    chunks.append({"content": " ".join(current_chunk), "page": current_page})
-                    # New chunk starts with overlap from previous
-                    current_chunk = current_chunk[-overlap:] + block_words
-                    current_page = actual_page_num
-                else:
-                    if not current_chunk:
-                        current_page = actual_page_num
-                    current_chunk.extend(block_words)
-                    
-    if len(current_chunk) > overlap:
-        chunks.append({"content": " ".join(current_chunk), "page": current_page})
+        page_lines = [line.strip() for b in blocks for line in b["text"].split("\n") if line.strip()]
+        page_section = detect_section_title(page_lines, actual_page_num)
+        page_full_text = "\n\n".join(b["text"] for b in blocks)
+        page_words = page_full_text.split()
         
+        if not page_words:
+            continue
+            
+        # Treat each page as a semantic container:
+        # If the page fits within chunk_size (+ margin), keep it intact as a complete chunk!
+        if len(page_words) <= chunk_size + 60:
+            semesters = extract_semesters(page_full_text)
+            chunks.append({
+                "content": page_full_text,
+                "page": actual_page_num,
+                "section": page_section,
+                "semesters": semesters
+            })
+        else:
+            # Multi-chunk page if page is huge
+            i = 0
+            part = 1
+            while i < len(page_words):
+                chunk_slice = " ".join(page_words[i:i + chunk_size])
+                semesters = extract_semesters(chunk_slice)
+                sub_sec = f"{page_section} (Part {part})" if part > 1 else page_section
+                chunks.append({
+                    "content": chunk_slice,
+                    "page": actual_page_num,
+                    "section": sub_sec,
+                    "semesters": semesters
+                })
+                i += chunk_size - overlap
+                part += 1
+                
     return chunks
 
 def ingest_version(payload: dict):
@@ -213,7 +333,7 @@ def ingest_version(payload: dict):
             import mimetypes
             mime_type, _ = mimetypes.guess_type(file_path)
             
-            # 1 & 2. Extraction and Chunking
+            # 1 & 2. Extraction and Chunking (Page & Section-Aware)
             chunks = extract_and_chunk(file_path, mime_type)
             
             # 3. Embedding and Indexing
@@ -222,6 +342,8 @@ def ingest_version(payload: dict):
             
             valid_chunks = [c for c in chunks if c["content"].strip()]
             all_doc_dates = []
+            all_doc_semesters = set()
+            
             if valid_chunks:
                 embeddings = list(model.embed([c["content"] for c in valid_chunks]))
                 
@@ -232,21 +354,29 @@ def ingest_version(payload: dict):
                     for d in chunk_dates:
                         if d not in all_doc_dates:
                             all_doc_dates.append(d)
+                            
+                    chunk_semesters = chunk_dict.get("semesters", [])
+                    for s in chunk_semesters:
+                        all_doc_semesters.add(s)
+                        
+                    chunk_section = chunk_dict.get("section")
                     
                     chunk_meta = {
                         "page": chunk_dict["page"],
-                        "dates": chunk_dates
+                        "section": chunk_section,
+                        "dates": chunk_dates,
+                        "semesters": chunk_semesters
                     }
                     
                     insert_data.append((
-                        doc_id, ver_id, idx, chunk_text, chunk_dict["page"], 
+                        doc_id, ver_id, idx, chunk_text, chunk_dict["page"], chunk_section,
                         json.dumps(chunk_meta), embedding.tolist(), model_name
                     ))
                     
                 conn.cursor().executemany(
                     """
-                    INSERT INTO chunks (document_id, version_id, chunk_index, content, page, metadata, embedding, embedding_model)
-                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s)
+                    INSERT INTO chunks (document_id, version_id, chunk_index, content, page, section, metadata, embedding, embedding_model)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
                     """,
                     insert_data
                 )
@@ -262,6 +392,21 @@ def ingest_version(payload: dict):
                     WHERE id = %s
                     """,
                     (iso_dates[0], iso_dates[-1], ver_id)
+                )
+
+            # Smart document-level semester resolution:
+            # If multiple distinct semesters exist across document chunks (e.g. Sem 1, 3, 5),
+            # clear documents.semester to NULL so it acts as an institutional multi-semester circular!
+            if len(all_doc_semesters) > 1:
+                conn.execute(
+                    "UPDATE documents SET semester = NULL WHERE id = %s",
+                    (doc_id,)
+                )
+            elif len(all_doc_semesters) == 1:
+                single_sem = list(all_doc_semesters)[0]
+                conn.execute(
+                    "UPDATE documents SET semester = COALESCE(semester, %s) WHERE id = %s",
+                    (single_sem, doc_id)
                 )
 
             # Mark success
