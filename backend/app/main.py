@@ -7,9 +7,15 @@ from app.db.session import pool
 
 from app.api import auth, users, documents, chat
 
+import threading
+from worker.main import run_forever
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_migrations(get_settings().embedding_dim)
+    # Start Postgres-backed ingestion worker thread
+    worker_thread = threading.Thread(target=run_forever, daemon=True, name="BhartiIngestionWorker")
+    worker_thread.start()
     yield
 
 

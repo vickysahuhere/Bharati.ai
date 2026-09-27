@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, FileText, Upload, CheckCircle, XCircle, RefreshCw, Shield, Cpu, Menu, Tag, Plus, X, Search, Hash } from 'lucide-react';
+import { Users, FileText, Upload, CheckCircle, XCircle, RefreshCw, Shield, Cpu, Menu, Tag, Plus, X, Search, Hash, Zap, AlertCircle } from 'lucide-react';
 import StudentChat from './StudentChat';
 import { CAMPUS_KEYWORDS } from '../config/keywords';
 
@@ -20,6 +20,9 @@ export default function AdminPanel({ token }) {
   const [sourceUrl, setSourceUrl] = useState('');
   const [showKeywordsPicker, setShowKeywordsPicker] = useState(false);
   const [keywordFilter, setKeywordFilter] = useState('');
+
+  const [reindexingId, setReindexingId] = useState(null);
+  const [processingQueue, setProcessingQueue] = useState(false);
 
   useEffect(() => {
     if (activeTab === 'users') fetchPendingUsers();
@@ -111,7 +114,7 @@ export default function AdminPanel({ token }) {
       });
 
       if (res.ok) {
-        setMessage('Document uploaded & background worker job queued!');
+        setMessage('Document uploaded & indexed successfully!');
         setTitle('');
         setSubject('');
         setDepartment('');
@@ -127,6 +130,51 @@ export default function AdminPanel({ token }) {
       setMessage(`Error: ${e.message}`);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleReindex = async (docId) => {
+    setReindexingId(docId);
+    setMessage('');
+    try {
+      const res = await fetch(`/api/documents/${docId}/reindex`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setMessage('Document successfully re-indexed!');
+        fetchDocuments();
+      } else {
+        const err = await res.json();
+        setMessage(`Re-indexing failed: ${err.detail || 'Unknown error'}`);
+      }
+    } catch (e) {
+      setMessage(`Re-indexing error: ${e.message}`);
+    } finally {
+      setReindexingId(null);
+    }
+  };
+
+  const handleProcessQueue = async () => {
+    setProcessingQueue(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/documents/process-queue', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessage(`Queue processed: ${data.processed} job(s) completed.`);
+        fetchDocuments();
+      } else {
+        const err = await res.json();
+        setMessage(`Failed to process queue: ${err.detail || 'Unknown error'}`);
+      }
+    } catch (e) {
+      setMessage(`Error processing queue: ${e.message}`);
+    } finally {
+      setProcessingQueue(false);
     }
   };
 
@@ -433,11 +481,29 @@ export default function AdminPanel({ token }) {
 
               {/* Status List */}
               <div className="bg-white brutal-border p-6 sm:p-8 brutal-shadow">
-                <div className="flex items-center justify-between mb-8">
-                  <h2 className="text-lg font-heading font-bold text-[#111111] uppercase tracking-widest">Ingested Knowledge Repository</h2>
-                  <button onClick={fetchDocuments} className="text-[#111111] bg-white brutal-border p-3 brutal-shadow-active transition-transform">
-                    <RefreshCw className="w-4 h-4" />
-                  </button>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+                  <div>
+                    <h2 className="text-lg font-heading font-bold text-[#111111] uppercase tracking-widest">Ingested Knowledge Repository</h2>
+                    <p className="text-xs text-[#111111]/60 font-medium mt-1">Institutional documents indexed into Supabase vector chunks for semantic RAG.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleProcessQueue}
+                      disabled={processingQueue}
+                      className="px-4 py-2 bg-white text-[#111111] hover:bg-[#1D2330] hover:text-white font-bold brutal-border inline-flex items-center gap-1.5 text-[11px] uppercase tracking-widest transition-colors min-h-[40px] brutal-shadow-active"
+                      title="Run all pending queue jobs"
+                    >
+                      <Zap className="w-3.5 h-3.5 text-[#E25A3F]" />
+                      {processingQueue ? 'Processing...' : 'Process Queue'}
+                    </button>
+                    <button
+                      onClick={fetchDocuments}
+                      className="text-[#111111] bg-white brutal-border p-2.5 brutal-shadow-active transition-transform"
+                      title="Refresh"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -446,15 +512,30 @@ export default function AdminPanel({ token }) {
                       <tr>
                         <th className="p-4 border-b-[1.5px] border-r-[1.5px] border-[#111111]">Title</th>
                         <th className="p-4 border-b-[1.5px] border-r-[1.5px] border-[#111111]">Version</th>
-                        <th className="p-4 border-b-[1.5px] border-[#111111]">Status</th>
+                        <th className="p-4 border-b-[1.5px] border-r-[1.5px] border-[#111111]">Chunks</th>
+                        <th className="p-4 border-b-[1.5px] border-r-[1.5px] border-[#111111]">Status</th>
+                        <th className="p-4 border-b-[1.5px] border-[#111111] text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y-[1.5px] divide-[#111111] bg-white text-[#111111]">
                       {documents.map((d) => (
                         <tr key={d.document_id} className="hover:bg-[#F4F1EA] transition-colors">
-                          <td className="p-4 font-bold border-r-[1.5px] border-[#111111]">{d.title}</td>
+                          <td className="p-4 font-bold border-r-[1.5px] border-[#111111]">
+                            <div>{d.title}</div>
+                            {d.error && (
+                              <div className="text-[10px] text-[#E25A3F] font-normal flex items-center gap-1 mt-1 truncate max-w-xs" title={d.error}>
+                                <AlertCircle className="w-3 h-3 shrink-0" />
+                                {d.error}
+                              </div>
+                            )}
+                          </td>
                           <td className="p-4 font-medium border-r-[1.5px] border-[#111111]">v{d.version}</td>
-                          <td className="p-4">
+                          <td className="p-4 font-bold border-r-[1.5px] border-[#111111]">
+                            <span className="px-2 py-0.5 bg-[#F4F1EA] brutal-border text-[10px]">
+                              {d.chunks_count || 0} chunks
+                            </span>
+                          </td>
+                          <td className="p-4 border-r-[1.5px] border-[#111111]">
                             <span
                               className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest brutal-border ${
                                 d.status === 'indexed'
@@ -466,6 +547,16 @@ export default function AdminPanel({ token }) {
                             >
                               {d.status}
                             </span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <button
+                              onClick={() => handleReindex(d.document_id)}
+                              disabled={reindexingId === d.document_id}
+                              className="px-3 py-1.5 bg-white text-[#111111] hover:bg-[#1D2330] hover:text-white font-bold brutal-border inline-flex items-center gap-1.5 text-[10px] uppercase tracking-widest transition-colors min-h-[34px] brutal-shadow-active"
+                            >
+                              <Zap className="w-3 h-3 text-[#E25A3F]" />
+                              {reindexingId === d.document_id ? 'Indexing...' : (d.status === 'indexed' ? 'Re-index' : 'Index Now')}
+                            </button>
                           </td>
                         </tr>
                       ))}

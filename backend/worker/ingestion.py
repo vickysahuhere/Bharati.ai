@@ -149,7 +149,10 @@ def ingest_version(payload: dict):
             raise ValueError(f"Version {ver_id} not found")
             
         file_key = row[0]
-        file_path = str(storage.get_path(file_key))
+        file_path_obj = storage.ensure_file_on_disk(file_key, conn)
+        if not file_path_obj.exists() or file_path_obj.stat().st_size == 0:
+            raise FileNotFoundError(f"File {file_key} is not found on disk or in the database. Please re-upload this document.")
+        file_path = str(file_path_obj)
         
         try:
             # Clear old chunks for idempotency
@@ -186,9 +189,16 @@ def ingest_version(payload: dict):
                 
             # Mark success
             conn.execute(
-                "UPDATE document_versions SET status='indexed', is_active=true WHERE id=%s",
+                "UPDATE document_versions SET status='indexed', is_active=true, error=NULL WHERE id=%s",
                 (ver_id,)
             )
+            try:
+                conn.execute(
+                    "UPDATE jobs SET status='done', last_error=NULL WHERE kind='ingest_version' AND payload->>'version_id'=%s",
+                    (str(ver_id),)
+                )
+            except Exception:
+                pass
             
         except Exception as e:
             logger.error(f"Ingestion failed for version {ver_id}: {e}")
@@ -197,6 +207,10 @@ def ingest_version(payload: dict):
                     err_conn.execute(
                         "UPDATE document_versions SET status='failed', error=%s WHERE id=%s",
                         (str(e), ver_id)
+                    )
+                    err_conn.execute(
+                        "UPDATE jobs SET status='failed', last_error=%s WHERE kind='ingest_version' AND payload->>'version_id'=%s",
+                        (str(e), str(ver_id))
                     )
             except Exception:
                 pass

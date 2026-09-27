@@ -38,8 +38,9 @@ def upload_document(
             detail=f"Unsupported file type '{file.content_type}'. Please upload PDF, DOCX, TXT, JPEG, or PNG files."
         )
 
-    # Save the file
-    file_key = storage.save_upload(file.file, file.filename)
+    # Read file bytes to store persistently in Postgres and on disk
+    file_bytes = file.file.read()
+    file_key = storage.save_bytes(file_bytes, file.filename)
     
     with pool().connection() as conn:
         with conn.transaction():
@@ -54,14 +55,14 @@ def upload_document(
             ).fetchone()
             doc_id = doc_row[0]
             
-            # Create document version
+            # Create document version with persistent binary data
             ver_row = conn.execute(
                 """
-                INSERT INTO document_versions (document_id, version, file_key, mime)
-                VALUES (%s, 1, %s, %s)
+                INSERT INTO document_versions (document_id, version, file_key, mime, file_data)
+                VALUES (%s, 1, %s, %s, %s)
                 RETURNING id
                 """,
-                (doc_id, file_key, file.content_type)
+                (doc_id, file_key, file.content_type, file_bytes)
             ).fetchone()
             ver_id = ver_row[0]
             
@@ -71,8 +72,18 @@ def upload_document(
                 "INSERT INTO jobs (kind, payload) VALUES ('ingest_version', %s)",
                 (payload,)
             )
+
+    # Immediately trigger ingestion for instant indexing
+    final_status = "uploaded"
+    try:
+        from worker.ingestion import ingest_version
+        ingest_version({"document_id": str(doc_id), "version_id": str(ver_id)})
+        final_status = "indexed"
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Immediate ingestion deferred to background worker: {e}")
             
-    return {"status": "uploaded", "document_id": str(doc_id), "version_id": str(ver_id)}
+    return {"status": final_status, "document_id": str(doc_id), "version_id": str(ver_id)}
 
 
 @router.get("/status")
@@ -80,18 +91,67 @@ def get_documents_status(admin: UserResponse = Depends(get_admin_user)):
     with pool().connection() as conn:
         rows = conn.execute(
             """
-            SELECT d.id, d.title, dv.version, dv.status, dv.error 
+            SELECT d.id, d.title, dv.version, dv.status, dv.error,
+                   (SELECT COUNT(*) FROM chunks c WHERE c.version_id = dv.id) as chunks_count,
+                   dv.created_at
             FROM documents d
             JOIN document_versions dv ON d.id = dv.document_id
             WHERE d.deleted_at IS NULL
-            ORDER BY d.created_at DESC
+            ORDER BY dv.created_at DESC
             """
         ).fetchall()
         
     return [
-        {"document_id": str(r[0]), "title": r[1], "version": r[2], "status": r[3], "error": r[4]}
+        {
+            "document_id": str(r[0]), 
+            "title": r[1], 
+            "version": r[2], 
+            "status": r[3], 
+            "error": r[4],
+            "chunks_count": r[5],
+            "created_at": r[6].isoformat() if r[6] else None
+        }
         for r in rows
     ]
+
+@router.post("/{doc_id}/reindex")
+def reindex_document(doc_id: str, admin: UserResponse = Depends(get_admin_user)):
+    with pool().connection() as conn:
+        ver = conn.execute(
+            "SELECT id FROM document_versions WHERE document_id=%s ORDER BY version DESC LIMIT 1",
+            (doc_id,)
+        ).fetchone()
+        if not ver:
+            raise HTTPException(status_code=404, detail="Document version not found")
+        ver_id = str(ver[0])
+        
+    from worker.ingestion import ingest_version
+    try:
+        ingest_version({"document_id": doc_id, "version_id": ver_id})
+        return {"status": "indexed", "document_id": doc_id, "version_id": ver_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}")
+
+@router.post("/process-queue")
+def process_queue(admin: UserResponse = Depends(get_admin_user)):
+    """Claims and runs all pending queued jobs immediately."""
+    from worker.main import CLAIM, HANDLERS
+    processed = 0
+    errors = []
+    with pool().connection() as conn:
+        while True:
+            row = conn.execute(CLAIM).fetchone()
+            if not row:
+                break
+            job_id, kind, payload = row
+            try:
+                HANDLERS[kind](payload)
+                conn.execute("UPDATE jobs SET status='done', last_error=NULL WHERE id=%s", (job_id,))
+                processed += 1
+            except Exception as e:
+                conn.execute("UPDATE jobs SET status='failed', last_error=%s WHERE id=%s", (str(e), job_id))
+                errors.append(f"Job {job_id} error: {e}")
+    return {"processed": processed, "errors": errors}
 
 @router.delete("/{doc_id}")
 def delete_document(doc_id: str, admin: UserResponse = Depends(get_admin_user)):
