@@ -266,9 +266,15 @@ def ingest_version(payload: dict):
 
             # Mark success
             conn.execute(
-                "UPDATE document_versions SET status='indexed', is_active=true, error=NULL WHERE id=%s",
+                "UPDATE document_versions SET status='indexed', is_active=true, error=NULL, file_data=NULL WHERE id=%s",
                 (ver_id,)
             )
+            # Purge temporary file from local disk to prevent storage bloat
+            try:
+                storage.delete(file_key)
+            except Exception:
+                pass
+
             try:
                 conn.execute(
                     "UPDATE jobs SET status='done', last_error=NULL WHERE kind='ingest_version' AND payload->>'version_id'=%s",
