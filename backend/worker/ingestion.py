@@ -103,33 +103,53 @@ HEADING_KEYWORDS = [
     'notification', 'notice', 'schedule'
 ]
 
+PRIMARY_HEADING_KEYWORDS = [
+    'datesheet', 'timetable', 'schedule', 'guidelines', 'rules', 'instructions',
+    'semester 1', 'semester 2', 'semester 3', 'semester 4', 'semester 5', 'semester 6', 'semester 7', 'semester 8',
+    'sem 1', 'sem 2', 'sem 3', 'sem 4', 'sem 5', 'sem 6', 'sem 7', 'sem 8'
+]
+
+HEADER_SKIP_PREFIXES = ('ref.', 'ref no', 'ref:', 'notification date:', 'department of', 'date:', 'academic session:')
+
 def clean_title(title: str) -> str:
     cleaned = re.sub(r'^[0-9\.\-\:\#\*\s]+', '', title).strip()
+    # Strip leading "OFFICIAL NOTIFICATION:" if present for clean display
+    cleaned = re.sub(r'^OFFICIAL NOTIFICATION:\s*', '', cleaned, flags=re.IGNORECASE).strip()
     return cleaned[:100]
 
 def detect_section_title(lines: List[str], fallback_page_num: int = 1) -> str:
-    # 1. Look for explicit headings containing keywords
+    candidate_lines = []
     for line in lines[:15]:
         line_clean = line.strip()
-        if not line_clean or len(line_clean) < 4 or len(line_clean) > 120:
+        if not line_clean or len(line_clean) < 4 or len(line_clean) > 130:
             continue
         line_lower = line_clean.lower()
+        if any(line_lower.startswith(p) for p in HEADER_SKIP_PREFIXES):
+            continue
+        candidate_lines.append(line_clean)
+        
+    # 1. First priority: lines matching primary keywords (semester, datesheet, timetable, guidelines, rules)
+    for line in candidate_lines:
+        line_lower = line.lower()
+        if any(kw in line_lower for kw in PRIMARY_HEADING_KEYWORDS):
+            return clean_title(line)
+            
+    # 2. Second priority: any line with general heading keywords
+    for line in candidate_lines:
+        line_lower = line.lower()
         if any(kw in line_lower for kw in HEADING_KEYWORDS):
-            return clean_title(line_clean)
+            return clean_title(line)
             
-    # 2. Look for lines in ALL CAPS or starting with '#' (markdown headings)
-    for line in lines[:10]:
-        line_clean = line.strip()
-        if line_clean.startswith('#'):
-            return clean_title(line_clean.lstrip('#').strip())
-        if line_clean.isupper() and 6 <= len(line_clean) <= 90:
-            return clean_title(line_clean)
+    # 3. Third priority: Markdown headings or all-caps lines
+    for line in candidate_lines[:8]:
+        if line.startswith('#'):
+            return clean_title(line.lstrip('#').strip())
+        if line.isupper() and 6 <= len(line) <= 90:
+            return clean_title(line)
             
-    # 3. First non-empty substantial line
-    for line in lines[:5]:
-        line_clean = line.strip()
-        if len(line_clean) >= 6:
-            return clean_title(line_clean)
+    # 4. Fallback to first valid candidate line
+    if candidate_lines:
+        return clean_title(candidate_lines[0])
             
     return f"Page {fallback_page_num} Overview"
 
