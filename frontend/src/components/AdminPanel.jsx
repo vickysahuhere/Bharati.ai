@@ -20,6 +20,8 @@ export default function AdminPanel({ token }) {
   const [sourceUrl, setSourceUrl] = useState('');
   const [showKeywordsPicker, setShowKeywordsPicker] = useState(false);
   const [keywordFilter, setKeywordFilter] = useState('');
+  const [effectiveDate, setEffectiveDate] = useState('');
+  const [expirationDate, setExpirationDate] = useState('');
 
   const [reindexingId, setReindexingId] = useState(null);
   const [processingQueue, setProcessingQueue] = useState(false);
@@ -105,6 +107,8 @@ export default function AdminPanel({ token }) {
     if (semesterInput) formData.append('semester', semesterInput);
     if (docTypeInput) formData.append('document_type', docTypeInput);
     if (sourceUrl) formData.append('source_url', sourceUrl);
+    if (effectiveDate) formData.append('effective_date', effectiveDate);
+    if (expirationDate) formData.append('expiration_date', expirationDate);
 
     try {
       const res = await fetch('/api/documents/upload', {
@@ -120,6 +124,8 @@ export default function AdminPanel({ token }) {
         setDepartment('');
         setSemester('');
         setSourceUrl('');
+        setEffectiveDate('');
+        setExpirationDate('');
         setFile(null);
         fetchDocuments();
       } else {
@@ -454,6 +460,28 @@ export default function AdminPanel({ token }) {
                     />
                   </div>
 
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#111111]/80 uppercase tracking-widest mb-2">Notice / Effective Date (Optional)</label>
+                    <input
+                      type="date"
+                      value={effectiveDate}
+                      onChange={(e) => setEffectiveDate(e.target.value)}
+                      className="w-full px-4 py-3 bg-[#F4F1EA] brutal-border text-[#111111] focus:ring-0 focus:border-[#E25A3F] focus:outline-none min-h-[44px]"
+                    />
+                    <span className="text-[10px] text-[#111111]/60 font-semibold mt-1 block">Leave empty to auto-extract from document text</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-[#111111]/80 uppercase tracking-widest mb-2">Valid Until / Expiration (Optional)</label>
+                    <input
+                      type="date"
+                      value={expirationDate}
+                      onChange={(e) => setExpirationDate(e.target.value)}
+                      className="w-full px-4 py-3 bg-[#F4F1EA] brutal-border text-[#111111] focus:ring-0 focus:border-[#E25A3F] focus:outline-none min-h-[44px]"
+                    />
+                    <span className="text-[10px] text-[#111111]/60 font-semibold mt-1 block">e.g. End of exams or academic session</span>
+                  </div>
+
                   <div className="md:col-span-2 mt-4">
                     <label className="block text-[11px] font-bold text-[#111111]/80 uppercase tracking-widest mb-2">Select File (PDF, DOCX, TXT, JPEG, PNG) *</label>
                     <div className="border-[1.5px] border-dashed border-[#111111] bg-[#F4F1EA] p-6 sm:p-8 text-center hover:bg-[#111111]/5 transition-colors">
@@ -513,6 +541,7 @@ export default function AdminPanel({ token }) {
                         <th className="p-4 border-b-[1.5px] border-r-[1.5px] border-[#111111]">Title</th>
                         <th className="p-4 border-b-[1.5px] border-r-[1.5px] border-[#111111]">Version</th>
                         <th className="p-4 border-b-[1.5px] border-r-[1.5px] border-[#111111]">Chunks</th>
+                        <th className="p-4 border-b-[1.5px] border-r-[1.5px] border-[#111111]">Validity / Dates</th>
                         <th className="p-4 border-b-[1.5px] border-r-[1.5px] border-[#111111]">Status</th>
                         <th className="p-4 border-b-[1.5px] border-[#111111] text-right">Actions</th>
                       </tr>
@@ -534,6 +563,18 @@ export default function AdminPanel({ token }) {
                             <span className="px-2 py-0.5 bg-[#F4F1EA] brutal-border text-[10px]">
                               {d.chunks_count || 0} chunks
                             </span>
+                          </td>
+                          <td className="p-4 text-[10px] font-bold border-r-[1.5px] border-[#111111]">
+                            {d.effective_date ? (
+                              <div>
+                                <span className="text-[#111111]">{d.effective_date}</span>
+                                {d.expiration_date && (
+                                  <span className="text-[#111111]/60 block font-normal">to {d.expiration_date}</span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[#111111]/40 uppercase tracking-wider text-[9px]">Auto-detecting</span>
+                            )}
                           </td>
                           <td className="p-4 border-r-[1.5px] border-[#111111]">
                             <span

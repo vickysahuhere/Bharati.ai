@@ -19,6 +19,8 @@ def upload_document(
     semester: int = Form(None),
     subject: str = Form(None),
     document_type: str = Form(None),
+    effective_date: Optional[str] = Form(None),
+    expiration_date: Optional[str] = Form(None),
     source_url: str = Form(None),
     admin: UserResponse = Depends(get_admin_user)
 ):
@@ -38,6 +40,10 @@ def upload_document(
             detail=f"Unsupported file type '{file.content_type}'. Please upload PDF, DOCX, TXT, JPEG, or PNG files."
         )
 
+    # Clean dates
+    eff_date = effective_date.strip() if effective_date and effective_date.strip() else None
+    exp_date = expiration_date.strip() if expiration_date and expiration_date.strip() else None
+
     # Read file bytes to store persistently in Postgres and on disk
     file_bytes = file.file.read()
     file_key = storage.save_bytes(file_bytes, file.filename)
@@ -55,14 +61,14 @@ def upload_document(
             ).fetchone()
             doc_id = doc_row[0]
             
-            # Create document version with persistent binary data
+            # Create document version with persistent binary data and dates
             ver_row = conn.execute(
                 """
-                INSERT INTO document_versions (document_id, version, file_key, mime, file_data)
-                VALUES (%s, 1, %s, %s, %s)
+                INSERT INTO document_versions (document_id, version, file_key, mime, file_data, effective_date, expiration_date)
+                VALUES (%s, 1, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (doc_id, file_key, file.content_type, file_bytes)
+                (doc_id, file_key, file.content_type, file_bytes, eff_date, exp_date)
             ).fetchone()
             ver_id = ver_row[0]
             
@@ -93,7 +99,8 @@ def get_documents_status(admin: UserResponse = Depends(get_admin_user)):
             """
             SELECT d.id, d.title, dv.version, dv.status, dv.error,
                    (SELECT COUNT(*) FROM chunks c WHERE c.version_id = dv.id) as chunks_count,
-                   dv.created_at
+                   dv.created_at, dv.effective_date, dv.expiration_date,
+                   d.department, d.semester, d.subject, d.document_type
             FROM documents d
             JOIN document_versions dv ON d.id = dv.document_id
             WHERE d.deleted_at IS NULL
@@ -109,7 +116,13 @@ def get_documents_status(admin: UserResponse = Depends(get_admin_user)):
             "status": r[3], 
             "error": r[4],
             "chunks_count": r[5],
-            "created_at": r[6].isoformat() if r[6] else None
+            "created_at": r[6].isoformat() if r[6] else None,
+            "effective_date": r[7].isoformat() if r[7] else None,
+            "expiration_date": r[8].isoformat() if r[8] else None,
+            "department": r[9],
+            "semester": r[10],
+            "subject": r[11],
+            "document_type": r[12]
         }
         for r in rows
     ]

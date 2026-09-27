@@ -32,9 +32,7 @@ def hybrid_search(
     where_clauses = [
         "dv.is_active = true",
         "dv.status = 'indexed'",
-        "d.deleted_at IS NULL",
-        "(dv.effective_date IS NULL OR dv.effective_date <= CURRENT_DATE)",
-        "(dv.expiration_date IS NULL OR dv.expiration_date >= CURRENT_DATE)"
+        "d.deleted_at IS NULL"
     ]
     params: list = []
     
@@ -61,6 +59,8 @@ def hybrid_search(
         SELECT 
             c.id, c.document_id, c.version_id, c.chunk_index, c.content, c.page, c.section, c.metadata,
             d.title, d.knowledge_domain, d.source_url,
+            d.department, d.semester, d.subject, d.document_type,
+            dv.effective_date, dv.expiration_date,
             1 - (c.embedding <=> %s::vector) AS score
         FROM chunks c
         JOIN document_versions dv ON c.version_id = dv.id
@@ -76,6 +76,8 @@ def hybrid_search(
         SELECT 
             c.id, c.document_id, c.version_id, c.chunk_index, c.content, c.page, c.section, c.metadata,
             d.title, d.knowledge_domain, d.source_url,
+            d.department, d.semester, d.subject, d.document_type,
+            dv.effective_date, dv.expiration_date,
             ts_rank_cd(
                 c.tsv || to_tsvector('simple', coalesce(d.title, '') || ' ' || coalesce(d.subject, '') || ' ' || coalesce(d.department, '')),
                 plainto_tsquery('simple', %s)
@@ -108,11 +110,17 @@ def hybrid_search(
                         "content": row[4],
                         "page": row[5],
                         "section": row[6],
-                        "metadata": row[7],
+                        "metadata": row[7] if isinstance(row[7], dict) else {},
                         "title": row[8],
                         "domain": row[9],
                         "source_url": row[10],
-                        "vec_score": row[11],
+                        "department": row[11],
+                        "semester": row[12],
+                        "subject": row[13],
+                        "document_type": row[14],
+                        "effective_date": row[15].isoformat() if row[15] else None,
+                        "expiration_date": row[16].isoformat() if row[16] else None,
+                        "vec_score": row[17],
                         "fts_score": 0.0,
                         "rrf_score": rrf_score
                     }
@@ -127,7 +135,7 @@ def hybrid_search(
                 chunk_id = row[0]
                 rrf_score = 1.0 / (rrf_k + rank)
                 if chunk_id in chunk_scores:
-                    chunk_scores[chunk_id]["fts_score"] = row[11]
+                    chunk_scores[chunk_id]["fts_score"] = row[17]
                     chunk_scores[chunk_id]["rrf_score"] += rrf_score
                 else:
                     chunk_scores[chunk_id] = {
@@ -138,12 +146,18 @@ def hybrid_search(
                         "content": row[4],
                         "page": row[5],
                         "section": row[6],
-                        "metadata": row[7],
+                        "metadata": row[7] if isinstance(row[7], dict) else {},
                         "title": row[8],
                         "domain": row[9],
                         "source_url": row[10],
+                        "department": row[11],
+                        "semester": row[12],
+                        "subject": row[13],
+                        "document_type": row[14],
+                        "effective_date": row[15].isoformat() if row[15] else None,
+                        "expiration_date": row[16].isoformat() if row[16] else None,
                         "vec_score": 0.0,
-                        "fts_score": row[11],
+                        "fts_score": row[17],
                         "rrf_score": rrf_score
                     }
         except Exception as e:

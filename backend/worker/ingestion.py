@@ -1,5 +1,8 @@
 import json
 import logging
+import re
+from datetime import datetime
+from typing import Optional, List
 import fitz  # PyMuPDF
 from fastembed import TextEmbedding
 
@@ -8,6 +11,55 @@ from app.providers.storage import StorageProvider
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+MONTH_MAP = {
+    'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
+    'apr': 4, 'april': 4, 'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
+    'aug': 8, 'august': 8, 'sep': 9, 'sept': 9, 'september': 9, 'oct': 10, 'october': 10,
+    'nov': 11, 'november': 11, 'dec': 12, 'december': 12
+}
+
+DATE_REGEXES = [
+    re.compile(r'\b(20\d{2}[-/]\d{1,2}[-/]\d{1,2})\b'),
+    re.compile(r'\b(\d{1,2}[-/\.]\d{1,2}[-/\.]20\d{2})\b'),
+    re.compile(r'\b(\d{1,2}(?:st|nd|rd|th)?\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+20\d{2})\b', re.IGNORECASE),
+    re.compile(r'\b((?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?,?\s+20\d{2})\b', re.IGNORECASE),
+]
+
+def extract_dates_from_text(text: str) -> List[str]:
+    found = []
+    for rgx in DATE_REGEXES:
+        for match in rgx.findall(text):
+            m_str = match.strip()
+            if m_str not in found:
+                found.append(m_str)
+    return found[:12]
+
+def parse_date_to_iso(date_str: str) -> Optional[str]:
+    clean = re.sub(r'(st|nd|rd|th|,)', '', date_str).strip()
+    m1 = re.match(r'^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$', clean)
+    if m1:
+        y, m, d = int(m1.group(1)), int(m1.group(2)), int(m1.group(3))
+        if 1 <= m <= 12 and 1 <= d <= 31:
+            return f"{y:04d}-{m:02d}-{d:02d}"
+    m2 = re.match(r'^(\d{1,2})[-/\.](\d{1,2})[-/\.](\d{4})$', clean)
+    if m2:
+        d, m, y = int(m2.group(1)), int(m2.group(2)), int(m2.group(3))
+        if 1 <= m <= 12 and 1 <= d <= 31:
+            return f"{y:04d}-{m:02d}-{d:02d}"
+    m3 = re.match(r'^(\d{1,2})\s+([a-zA-Z]+)\s+(\d{4})$', clean)
+    if m3:
+        d, mon_str, y = int(m3.group(1)), m3.group(2).lower(), int(m3.group(3))
+        m = MONTH_MAP.get(mon_str)
+        if m and 1 <= d <= 31:
+            return f"{y:04d}-{m:02d}-{d:02d}"
+    m4 = re.match(r'^([a-zA-Z]+)\s+(\d{1,2})\s+(\d{4})$', clean)
+    if m4:
+        mon_str, d, y = m4.group(1).lower(), int(m4.group(2)), int(m4.group(3))
+        m = MONTH_MAP.get(mon_str)
+        if m and 1 <= d <= 31:
+            return f"{y:04d}-{m:02d}-{d:02d}"
+    return None
 
 # Lazy-load to avoid initializing during import if not needed
 embedding_model = None
@@ -169,24 +221,49 @@ def ingest_version(payload: dict):
             model_name = get_settings().embedding_model
             
             valid_chunks = [c for c in chunks if c["content"].strip()]
+            all_doc_dates = []
             if valid_chunks:
                 embeddings = list(model.embed([c["content"] for c in valid_chunks]))
                 
                 insert_data = []
                 for idx, (chunk_dict, embedding) in enumerate(zip(valid_chunks, embeddings)):
+                    chunk_text = chunk_dict["content"]
+                    chunk_dates = extract_dates_from_text(chunk_text)
+                    for d in chunk_dates:
+                        if d not in all_doc_dates:
+                            all_doc_dates.append(d)
+                    
+                    chunk_meta = {
+                        "page": chunk_dict["page"],
+                        "dates": chunk_dates
+                    }
+                    
                     insert_data.append((
-                        doc_id, ver_id, idx, chunk_dict["content"], chunk_dict["page"], 
-                        embedding.tolist(), model_name
+                        doc_id, ver_id, idx, chunk_text, chunk_dict["page"], 
+                        json.dumps(chunk_meta), embedding.tolist(), model_name
                     ))
                     
                 conn.cursor().executemany(
                     """
-                    INSERT INTO chunks (document_id, version_id, chunk_index, content, page, embedding, embedding_model)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    INSERT INTO chunks (document_id, version_id, chunk_index, content, page, metadata, embedding, embedding_model)
+                    VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s)
                     """,
                     insert_data
                 )
                 
+            # Auto-populate effective_date and expiration_date if not explicitly set
+            iso_dates = sorted([iso for d in all_doc_dates if (iso := parse_date_to_iso(d))])
+            if iso_dates:
+                conn.execute(
+                    """
+                    UPDATE document_versions 
+                    SET effective_date = COALESCE(effective_date, %s::date),
+                        expiration_date = COALESCE(expiration_date, %s::date)
+                    WHERE id = %s
+                    """,
+                    (iso_dates[0], iso_dates[-1], ver_id)
+                )
+
             # Mark success
             conn.execute(
                 "UPDATE document_versions SET status='indexed', is_active=true, error=NULL WHERE id=%s",
