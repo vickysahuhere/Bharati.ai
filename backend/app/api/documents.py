@@ -93,7 +93,42 @@ def upload_document(
     return {"status": final_status, "document_id": str(doc_id), "version_id": str(ver_id)}
 
 
+@router.get("/public/notices")
+def get_public_notices():
+    """Public list of active documents and notices for the student Notice Board."""
+    with pool().connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT d.id, d.title, d.knowledge_domain, d.department, d.semester, d.subject, 
+                   d.document_type, d.source_url, dv.created_at, dv.effective_date, dv.expiration_date
+            FROM documents d
+            JOIN document_versions dv ON d.id = dv.document_id
+            WHERE d.deleted_at IS NULL AND dv.status = 'indexed'
+            ORDER BY dv.created_at DESC
+            LIMIT 50
+            """
+        ).fetchall()
+        
+    return [
+        {
+            "id": str(r[0]),
+            "title": r[1],
+            "domain": r[2],
+            "department": r[3],
+            "semester": r[4],
+            "subject": r[5],
+            "document_type": r[6],
+            "source_url": r[7],
+            "created_at": r[8].isoformat() if r[8] else None,
+            "effective_date": r[9].isoformat() if r[9] else None,
+            "expiration_date": r[10].isoformat() if r[10] else None,
+        }
+        for r in rows
+    ]
+
+
 @router.get("/status")
+
 def get_documents_status(admin: UserResponse = Depends(get_admin_user)):
     with pool().connection() as conn:
         rows = conn.execute(

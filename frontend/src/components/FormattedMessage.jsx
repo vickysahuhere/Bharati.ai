@@ -16,19 +16,19 @@ function CodeBlock({ children, className }) {
   };
 
   return (
-    <div className="my-3 rounded-none border-[1.5px] border-[#111111] overflow-hidden bg-[#1E1E1E] text-white brutal-shadow text-xs">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-[#111111] border-b-[1.5px] border-[#333333] text-[10px] font-mono uppercase tracking-wider text-gray-400">
-        <span>{lang || 'code'}</span>
+    <div className="my-3 rounded-xl border border-zinc-200 overflow-hidden bg-zinc-900 text-zinc-100 shadow-xs text-xs">
+      <div className="flex items-center justify-between px-3.5 py-2 bg-zinc-800/80 border-b border-zinc-700/60 text-[11px] font-mono text-zinc-400">
+        <span className="font-medium text-zinc-300">{lang || 'code'}</span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 hover:text-white transition-colors"
+          className="flex items-center gap-1.5 px-2 py-1 rounded hover:bg-zinc-700/70 hover:text-white transition-colors"
           title="Copy code"
         >
           {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-          <span>{copied ? 'Copied!' : 'Copy'}</span>
+          <span>{copied ? 'Copied' : 'Copy'}</span>
         </button>
       </div>
-      <div className="p-3 overflow-x-auto font-mono text-[12px] leading-relaxed text-emerald-300">
+      <div className="p-3.5 overflow-x-auto font-mono text-[12.5px] leading-relaxed text-zinc-200">
         <code>{children}</code>
       </div>
     </div>
@@ -37,60 +37,60 @@ function CodeBlock({ children, className }) {
 
 export default function FormattedMessage({ content, isUser }) {
   if (isUser) {
-    return <div className="whitespace-pre-wrap font-medium">{content}</div>;
+    return <div className="whitespace-pre-wrap leading-relaxed text-[14px]">{content}</div>;
   }
 
   return (
-    <div className="chatgpt-message space-y-3 leading-relaxed text-[13.5px]">
+    <div className="space-y-3 leading-relaxed text-[13.5px] sm:text-[14px] text-zinc-800">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // Bold text highlighting
+          // Bold text
           strong: ({ children }) => (
-            <strong className="font-extrabold text-[#111111] bg-[#E25A3F]/10 px-1 py-0.2 rounded-sm border-b-[1.5px] border-[#E25A3F]/40">
+            <strong className="font-semibold text-zinc-900">
               {children}
             </strong>
           ),
 
           // Emphasis / Italics
           em: ({ children }) => (
-            <em className="italic text-[#111111]/90 font-medium">
+            <em className="italic text-zinc-800">
               {children}
             </em>
           ),
 
           // Headings
           h1: ({ children }) => (
-            <h1 className="text-lg font-heading font-extrabold text-[#111111] mt-4 mb-2 pb-1 border-b-[1.5px] border-[#111111]/20 uppercase tracking-tight">
+            <h1 className="text-base sm:text-lg font-semibold text-zinc-900 mt-4 mb-2 pb-1 border-b border-zinc-100 tracking-tight">
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="text-base font-heading font-bold text-[#111111] mt-3 mb-2 pb-1 border-b border-[#111111]/15 uppercase tracking-wide">
+            <h2 className="text-sm sm:text-base font-semibold text-zinc-900 mt-3 mb-1.5 pb-1 border-b border-zinc-100 tracking-tight">
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="text-sm font-heading font-bold text-[#1D2330] mt-3 mb-1.5 uppercase">
+            <h3 className="text-xs sm:text-sm font-semibold text-zinc-900 mt-2.5 mb-1">
               {children}
             </h3>
           ),
 
           // Paragraphs
           p: ({ children }) => (
-            <p className="mb-2.5 last:mb-0 text-[#111111]/90 leading-relaxed font-normal">
+            <p className="mb-2.5 last:mb-0 leading-relaxed font-normal text-zinc-700">
               {children}
             </p>
           ),
 
           // Lists
           ul: ({ children }) => (
-            <ul className="my-2.5 space-y-1.5 list-disc pl-5 marker:text-[#E25A3F] font-normal">
+            <ul className="my-2.5 space-y-1.5 list-disc pl-5 marker:text-zinc-400 text-zinc-700">
               {children}
             </ul>
           ),
           ol: ({ children }) => (
-            <ol className="my-2.5 space-y-1.5 list-decimal pl-5 marker:font-bold marker:text-[#111111]">
+            <ol className="my-2.5 space-y-1.5 list-decimal pl-5 marker:font-medium marker:text-zinc-500 text-zinc-700">
               {children}
             </ol>
           ),
@@ -102,36 +102,36 @@ export default function FormattedMessage({ content, isUser }) {
 
           // Tables
           table: ({ children }) => (
-            <div className="my-4 overflow-x-auto brutal-border">
-              <table className="w-full text-left text-xs border-collapse bg-white">
+            <div className="my-3.5 overflow-x-auto rounded-xl border border-zinc-200/90 bg-white shadow-xs">
+              <table className="w-full text-left text-xs border-collapse">
                 {children}
               </table>
             </div>
           ),
           thead: ({ children }) => (
-            <thead className="bg-[#111111] text-white uppercase text-[10px] tracking-wider font-bold">
+            <thead className="bg-zinc-50/80 text-zinc-700 font-semibold border-b border-zinc-200">
               {children}
             </thead>
           ),
           th: ({ children }) => (
-            <th className="p-2.5 border-[1.5px] border-[#111111]">
+            <th className="py-2.5 px-3.5 text-xs font-semibold text-zinc-800 tracking-wider text-left border-b border-zinc-200">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="p-2.5 border-[1.5px] border-[#111111]/20 font-medium">
+            <td className="py-2.5 px-3.5 text-xs text-zinc-700 border-b border-zinc-100 last:border-b-0 leading-relaxed">
               {children}
             </td>
           ),
           tr: ({ children }) => (
-            <tr className="hover:bg-[#F4F1EA]/60 transition-colors">
+            <tr className="hover:bg-zinc-50/50 transition-colors">
               {children}
             </tr>
           ),
 
           // Blockquote
           blockquote: ({ children }) => (
-            <blockquote className="my-3 pl-3.5 border-l-4 border-[#E25A3F] bg-[#F4F1EA]/70 py-1.5 pr-3 text-xs text-[#111111]/80 italic">
+            <blockquote className="my-3 pl-3.5 border-l-2 border-zinc-300 bg-zinc-50/70 py-2 pr-3 rounded-r-lg text-xs text-zinc-600 italic">
               {children}
             </blockquote>
           ),
@@ -141,7 +141,7 @@ export default function FormattedMessage({ content, isUser }) {
             if (inline) {
               return (
                 <code
-                  className="px-1.5 py-0.5 mx-0.5 bg-[#111111]/8 font-mono text-[11.5px] font-bold text-[#E25A3F] border border-[#111111]/20 rounded-sm"
+                  className="px-1.5 py-0.5 mx-0.5 bg-zinc-100 font-mono text-[12px] font-medium text-zinc-800 rounded-md border border-zinc-200/70"
                   {...props}
                 >
                   {children}

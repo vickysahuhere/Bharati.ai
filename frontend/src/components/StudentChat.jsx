@@ -1,59 +1,128 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Plus, MessageSquare, ThumbsUp, ThumbsDown, BookOpen, Bell, Bot, Sparkles, X, Edit2, Check, Menu, Tag, Search, Hash, Copy, ExternalLink, ArrowRight } from 'lucide-react';
+import { 
+  Send, Plus, MessageSquare, ThumbsUp, ThumbsDown, BookOpen, 
+  Bell, Sparkles, X, Edit2, Check, Menu, Tag, Search, Copy, 
+  ExternalLink, Trash2, ArrowUp, ChevronRight, FileText, Calendar, 
+  HelpCircle, Clock, ChevronDown, CheckCircle2 
+} from 'lucide-react';
 import FormattedMessage from './FormattedMessage';
 import { CAMPUS_KEYWORDS } from '../config/keywords';
 
-export default function StudentChat({ token, config }) {
-  const [sessions, setSessions] = useState([]);
-  const [activeSessionId, setActiveSessionId] = useState(null);
+export default function StudentChat({ adminToken, config, noticesOpen, setNoticesOpen, onOpenSettings }) {
+  // Load threads from localStorage
+  const [threads, setThreads] = useState(() => {
+    try {
+      const saved = localStorage.getItem('camp_ai_threads');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Load active thread ID from localStorage
+  const [activeThreadId, setActiveThreadId] = useState(() => {
+    return localStorage.getItem('camp_ai_active_thread_id') || null;
+  });
+
+  // Current messages in active thread
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  
-  const [keywordsOpen, setKeywordsOpen] = useState(false);
-  const [keywordSearch, setKeywordSearch] = useState('');
-  const [activeTags, setActiveTags] = useState([]);
-  
-  const [selectedSources, setSelectedSources] = useState(null);
-  const [noticesOpen, setNoticesOpen] = useState(false);
+
+  // Mobile sidebar & UI state
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState(null);
-  const messagesEndRef = useRef(null);
-
-  const [editingSessionId, setEditingSessionId] = useState(null);
+  const [editingThreadId, setEditingThreadId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
 
+  // Source drawer & notices drawer
+  const [selectedSource, setSelectedSource] = useState(null);
+  const [notices, setNotices] = useState([]);
+  const [noticesLoading, setNoticesLoading] = useState(false);
+  const [noticeSearch, setNoticeSearch] = useState('');
+
+  // Keyword tag filters
+  const [tagsPickerOpen, setTagsPickerOpen] = useState(false);
+  const [activeTags, setActiveTags] = useState([]);
+  const [tagSearch, setTagSearch] = useState('');
+
+  const messagesEndRef = useRef(null);
+  const textareaRef = useRef(null);
+
+  // Sync messages whenever activeThreadId changes or threads change
   useEffect(() => {
-    fetchSessions();
+    if (activeThreadId) {
+      const current = threads.find((t) => t.id === activeThreadId);
+      if (current) {
+        setMessages(current.messages || []);
+        localStorage.setItem('camp_ai_active_thread_id', activeThreadId);
+      } else {
+        // Thread deleted or not found
+        setActiveThreadId(null);
+        setMessages([]);
+        localStorage.removeItem('camp_ai_active_thread_id');
+      }
+    } else {
+      setMessages([]);
+      localStorage.removeItem('camp_ai_active_thread_id');
+    }
+  }, [activeThreadId, threads]);
+
+  // Persist threads to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('camp_ai_threads', JSON.stringify(threads));
+    } catch (e) {
+      console.error('Failed to save threads to localStorage', e);
+    }
+  }, [threads]);
+
+  // Listen to clear history event from Settings modal
+  useEffect(() => {
+    const handleClear = () => {
+      setThreads([]);
+      setActiveThreadId(null);
+      setMessages([]);
+      localStorage.removeItem('camp_ai_threads');
+      localStorage.removeItem('camp_ai_active_thread_id');
+    };
+    window.addEventListener('camp_ai_clear_history', handleClear);
+    return () => window.removeEventListener('camp_ai_clear_history', handleClear);
   }, []);
 
-  useEffect(() => {
-    if (activeSessionId) {
-      fetchMessages(activeSessionId);
-    }
-  }, [activeSessionId]);
-
+  // Auto-scroll to bottom of messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, loading]);
 
-  // Global Escape key handler to close all modals/drawers
+  // Auto-resize textarea
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        setSelectedSources(null);
-        setNoticesOpen(false);
-        setKeywordsOpen(false);
-        setSidebarOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 160) + 'px';
+    }
+  }, [input]);
 
-  // Lock body scroll when sources or notices drawers are open
+  // Fetch notices when notices drawer is opened
   useEffect(() => {
-    if (selectedSources || noticesOpen) {
+    if (noticesOpen) {
+      setNoticesLoading(true);
+      fetch('/api/documents/public/notices')
+        .then((r) => r.json())
+        .then((data) => {
+          setNotices(Array.isArray(data) ? data : []);
+        })
+        .catch((e) => {
+          console.error(e);
+          setNotices([]);
+        })
+        .finally(() => setNoticesLoading(false));
+    }
+  }, [noticesOpen]);
+
+  // Lock body scroll when modals are open
+  useEffect(() => {
+    if (selectedSource || noticesOpen) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -61,720 +130,794 @@ export default function StudentChat({ token, config }) {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [selectedSources, noticesOpen]);
+  }, [selectedSource, noticesOpen]);
 
-  const handleCopyMessage = (id, text) => {
-    navigator.clipboard.writeText(text);
-    setCopiedMessageId(id);
-    setTimeout(() => setCopiedMessageId(null), 2000);
-  };
-
-  const fetchSessions = async () => {
-    try {
-      const res = await fetch('/api/chat/sessions', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSessions(data);
-        if (data.length > 0 && !activeSessionId) {
-          setActiveSessionId(data[0].id);
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const createSession = async () => {
-    try {
-      const res = await fetch('/api/chat/sessions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setSessions([data, ...sessions]);
-        setActiveSessionId(data.id);
-        setMessages([]);
-        setSidebarOpen(false);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const fetchMessages = async (sessionId) => {
-    try {
-      const res = await fetch(`/api/chat/sessions/${sessionId}/messages`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMessages(data);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleSend = async (e) => {
-    if (e) e.preventDefault();
-    if (!input.trim() || loading) return;
-
-    let targetSessionId = activeSessionId;
-    if (!targetSessionId) {
-      const res = await fetch('/api/chat/sessions', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        targetSessionId = data.id;
-        setActiveSessionId(targetSessionId);
-        setSessions([data, ...sessions]);
-      }
-    }
-
-    const userMsg = { role: 'user', content: input };
-    setMessages((prev) => [...prev, userMsg]);
-    const currentQuery = input;
+  // + New Chat Handler: COMPLETELY resets thread state and prevents cross-chat hallucination
+  const handleStartNewChat = () => {
+    setActiveThreadId(null);
+    setMessages([]);
+    localStorage.removeItem('camp_ai_active_thread_id');
     setInput('');
+    setActiveTags([]);
+    setSidebarOpen(false);
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  };
+
+  // Send message
+  const handleSend = async (customPrompt) => {
+    const queryText = (customPrompt || input).trim();
+    if (!queryText || loading) return;
+
+    setInput('');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setLoading(true);
 
+    const userMsg = {
+      id: `usr_${Date.now()}`,
+      role: 'user',
+      content: queryText,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Optimistically update message stream
+    setMessages((prev) => [...prev, userMsg]);
+
+    // Build chat history:
+    // If starting a new thread (activeThreadId is null), chat_history is STRICTLY empty []!
+    // This completely eliminates cross-chat hallucination!
+    let chatHistory = [];
+    let currentThreadId = activeThreadId;
+    let isNewThread = false;
+
+    if (!currentThreadId) {
+      isNewThread = true;
+      currentThreadId = `t_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      chatHistory = []; // STRICTLY EMPTY!
+    } else {
+      const currentThread = threads.find((t) => t.id === currentThreadId);
+      const prevMsgs = currentThread?.messages || messages;
+      chatHistory = prevMsgs.slice(-6).map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+    }
+
     try {
-      const res = await fetch(`/api/chat/sessions/${targetSessionId}/messages`, {
+      const headers = { 'Content-Type': 'application/json' };
+      if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+
+      const res = await fetch('/api/chat/query', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
+        headers,
         body: JSON.stringify({
-          query: currentQuery,
-          knowledge_domain: null, // Auto-search across Academics, Notices & Regulations
-          subject: activeTags.length > 0 ? activeTags.join(', ') : null
-        })
+          query: queryText,
+          chat_history: chatHistory,
+          knowledge_domain: null,
+          subject: activeTags.length > 0 ? activeTags.join(', ') : null,
+        }),
       });
 
+      let botContent = "I'm sorry, but I couldn't find relevant information in the college database. Please contact the administration.";
+      let botSources = [];
+
       if (res.ok) {
-        const botMsg = await res.json();
-        setMessages((prev) => [...prev, botMsg]);
+        const data = await res.json();
+        botContent = data.content;
+        botSources = data.sources || [];
+      } else {
+        const err = await res.json().catch(() => ({}));
+        botContent = err.detail || "Server error while processing your request. Please try again.";
+      }
+
+      const botMsg = {
+        id: `ast_${Date.now()}`,
+        role: 'assistant',
+        content: botContent,
+        sources: botSources,
+        createdAt: new Date().toISOString(),
+      };
+
+      setMessages((prev) => [...prev, botMsg]);
+
+      // Save to localStorage threads
+      if (isNewThread) {
+        const title = queryText.length > 38 ? queryText.slice(0, 38).trim() + '...' : queryText;
+        const newThread = {
+          id: currentThreadId,
+          title,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          messages: [userMsg, botMsg],
+        };
+        setThreads((prev) => [newThread, ...prev]);
+        setActiveThreadId(currentThreadId);
+      } else {
+        setThreads((prev) =>
+          prev.map((t) =>
+            t.id === currentThreadId
+              ? {
+                  ...t,
+                  updatedAt: new Date().toISOString(),
+                  messages: [...t.messages, userMsg, botMsg],
+                }
+              : t
+          )
+        );
       }
     } catch (e) {
       console.error(e);
+      const errorMsg = {
+        id: `err_${Date.now()}`,
+        role: 'assistant',
+        content: "Network error contacting the college database. Please check your connection and try again.",
+        sources: [],
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFeedback = async (msgId, rating) => {
-    try {
-      await fetch(`/api/chat/messages/${msgId}/feedback`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ feedback: rating })
-      });
-      setMessages((prev) =>
-        prev.map((m) => (m.id === msgId ? { ...m, feedback: rating } : m))
-      );
-    } catch (e) {
-      console.error(e);
+  const handleDeleteThread = (threadId, e) => {
+    e.stopPropagation();
+    setThreads((prev) => prev.filter((t) => t.id !== threadId));
+    if (activeThreadId === threadId) {
+      setActiveThreadId(null);
+      setMessages([]);
+      localStorage.removeItem('camp_ai_active_thread_id');
     }
   };
 
-  const handleRename = async (sessionId) => {
-    if (!editTitle.trim()) {
-      setEditingSessionId(null);
-      return;
-    }
-    try {
-      await fetch(`/api/chat/sessions/${sessionId}/title`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ title: editTitle.trim() })
-      });
-      setSessions((prev) => prev.map(s => s.id === sessionId ? { ...s, title: editTitle.trim() } : s));
-      setEditingSessionId(null);
-    } catch (e) {
-      console.error(e);
-    }
+  const handleStartRename = (thread, e) => {
+    e.stopPropagation();
+    setEditingThreadId(thread.id);
+    setEditTitle(thread.title);
   };
+
+  const handleSaveRename = (threadId, e) => {
+    e.stopPropagation();
+    if (editTitle.trim()) {
+      setThreads((prev) =>
+        prev.map((t) => (t.id === threadId ? { ...t, title: editTitle.trim() } : t))
+      );
+    }
+    setEditingThreadId(null);
+  };
+
+  const handleCopy = (id, text) => {
+    navigator.clipboard.writeText(text);
+    setCopiedMessageId(id);
+    setTimeout(() => setCopiedMessageId(null), 2000);
+  };
+
+  const handleTagToggle = (tag) => {
+    setActiveTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const quickPrompts = [
+    {
+      title: "📅 Examination Datesheets",
+      desc: "Exam timetable for B.Tech Semester 1, 3, and 5",
+      prompt: "Show me the examination schedule and datesheet for B.Tech Semester 1, 3, and 5.",
+    },
+    {
+      title: "💰 Tuition & Hostel Fees",
+      desc: "Annual course fee structure and payment deadlines",
+      prompt: "What is the complete fee structure, tuition, and hostel charges?",
+    },
+    {
+      title: "📚 Syllabus & Course Units",
+      desc: "Curriculum, subjects, and credits for engineering/IT",
+      prompt: "What is the detailed syllabus and course modules for B.Tech Computer Science?",
+    },
+    {
+      title: "📋 Admissions & Regulations",
+      desc: "Eligibility criteria, required documents, and guidelines",
+      prompt: "What are the admission rules, eligibility criteria, and documents required?",
+    },
+  ];
 
   return (
-    <div className="flex h-full w-full bg-[#F4F1EA] text-[#111111] overflow-hidden relative">
-      
-      {/* Mobile Sidebar Overlay */}
+    <div className="flex h-full w-full bg-[#fafafa] text-zinc-900 overflow-hidden relative">
+      {/* Mobile Sidebar Backdrop Overlay */}
       {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/40 z-40 sm:hidden"
+        <div
+          className="fixed inset-0 bg-black/30 backdrop-blur-xs z-30 sm:hidden animate-in fade-in duration-150"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar: Chat Sessions */}
-      <div className={`
-        fixed inset-y-0 left-0 z-50 w-72 bg-[#F4F1EA] border-r-[1.5px] border-[#111111] flex flex-col transform transition-transform duration-300 ease-out
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        sm:relative sm:translate-x-0
-      `}>
-        <div className="p-5 border-b-[1.5px] border-[#111111] flex items-center justify-between bg-white">
+      {/* Minimalist Sidebar */}
+      <aside
+        className={`fixed sm:relative top-0 bottom-0 left-0 w-72 sm:w-64 bg-white border-r border-zinc-200/90 z-40 flex flex-col transition-transform duration-200 ease-in-out shrink-0 ${
+          sidebarOpen ? 'translate-x-0 shadow-2xl sm:shadow-none' : '-translate-x-full sm:translate-x-0'
+        }`}
+      >
+        {/* Sidebar Header: New Chat Button */}
+        <div className="p-3 sm:p-3.5 border-b border-zinc-100 flex items-center gap-2">
           <button
-            onClick={createSession}
-            className="flex-1 py-3 px-4 bg-[#111111] text-white font-bold flex items-center justify-center gap-2 shadow-none brutal-shadow-active text-xs uppercase tracking-widest transition min-h-[44px]"
+            onClick={handleStartNewChat}
+            className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium flex items-center justify-center gap-2 shadow-xs transition-colors"
           >
-            <Plus className="w-4 h-4" /> New Chat
+            <Plus className="w-4 h-4" />
+            <span>New Chat</span>
           </button>
-          <button 
-            className="sm:hidden ml-3 p-2 text-[#111111] brutal-border bg-white"
+          <button
             onClick={() => setSidebarOpen(false)}
+            className="sm:hidden p-2 text-zinc-500 hover:text-zinc-800 rounded-lg hover:bg-zinc-100 transition-colors"
+            aria-label="Close sidebar"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* History List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-[#F4F1EA]">
-          <span className="text-[10px] font-bold text-[#111111]/60 uppercase tracking-widest block px-2 mb-3 mt-2">
-            Recent Threads
-          </span>
-          {sessions.map((s) => (
-            <div
-              key={s.id}
-              className={`w-full group p-3 flex items-center gap-2.5 text-xs transition cursor-pointer min-h-[44px] brutal-border ${
-                activeSessionId === s.id
-                  ? 'bg-white font-bold brutal-shadow'
-                  : 'bg-[#F4F1EA] hover:bg-white text-[#111111]/80 hover:text-[#111111]'
-              }`}
-            >
-              <MessageSquare className="w-4 h-4 text-[#E25A3F] shrink-0" />
-              {editingSessionId === s.id ? (
-                <div className="flex-1 flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={editTitle}
-                    onChange={(e) => setEditTitle(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleRename(s.id)}
-                    className="flex-1 bg-white border border-[#111111] px-2 py-1.5 text-xs text-[#111111] focus:outline-none"
-                    autoFocus
-                  />
-                  <button onClick={() => handleRename(s.id)} className="text-[#1D2330] p-1">
-                    <Check className="w-4 h-4" />
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <button 
-                    onClick={() => { setActiveSessionId(s.id); setSidebarOpen(false); }} 
-                    className="flex-1 text-left truncate"
-                  >
-                    {s.title || `Thread #${s.id.slice(0, 8)}`}
-                  </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setEditingSessionId(s.id); setEditTitle(s.title || `Thread #${s.id.slice(0, 8)}`); }}
-                    className="opacity-0 group-hover:opacity-100 text-[#111111]/50 hover:text-[#E25A3F] transition p-1"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Main Chat Workspace */}
-      <div className="flex-1 flex flex-col h-full relative w-full min-w-0 bg-white">
-        {/* Sub-header Bar */}
-        <div className="h-14 sm:h-16 border-b-[1.5px] border-[#111111] px-3 sm:px-6 flex items-center justify-between shrink-0 bg-[#F4F1EA] z-20">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <button 
-              className="sm:hidden p-2 text-[#111111] bg-white brutal-border shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center"
-              onClick={() => setSidebarOpen(true)}
-              aria-label="Open chat history"
-            >
-              <Menu className="w-4 h-4" />
-            </button>
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse shrink-0" />
-              <div className="min-w-0">
-                <h3 className="font-heading font-extrabold text-[#111111] text-xs sm:text-sm tracking-wider uppercase leading-none truncate">
-                  Bharti.ai Knowledge Engine
-                </h3>
-                <span className="text-[9px] sm:text-[10px] text-[#111111]/60 font-bold uppercase tracking-widest block mt-0.5 truncate">
-                  Universal Cross-Domain Search (Academics & Notices)
-                </span>
-              </div>
-            </div>
+        {/* Threads List */}
+        <div className="flex-1 overflow-y-auto px-2 py-3 space-y-1 no-scrollbar">
+          <div className="px-2 pb-1.5 flex items-center justify-between text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+            <span>Conversations</span>
+            <span className="text-zinc-400 font-normal">{threads.length}</span>
           </div>
 
+          {threads.length === 0 ? (
+            <div className="px-3 py-8 text-center text-xs text-zinc-400">
+              <MessageSquare className="w-6 h-6 mx-auto mb-2 opacity-30 stroke-1" />
+              <span>No conversations yet.</span>
+            </div>
+          ) : (
+            threads.map((thread) => {
+              const isActive = thread.id === activeThreadId;
+              const isEditing = editingThreadId === thread.id;
+
+              return (
+                <div
+                  key={thread.id}
+                  onClick={() => {
+                    if (!isEditing) {
+                      setActiveThreadId(thread.id);
+                      setSidebarOpen(false);
+                    }
+                  }}
+                  className={`group relative flex items-center justify-between px-3 py-2.5 rounded-xl text-xs transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-zinc-100 text-zinc-900 font-medium'
+                      : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900'
+                  }`}
+                >
+                  {isEditing ? (
+                    <div className="flex items-center gap-1.5 w-full" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="text"
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveRename(thread.id, e);
+                          if (e.key === 'Escape') setEditingThreadId(null);
+                        }}
+                        className="flex-1 px-2 py-1 text-xs bg-white border border-zinc-300 rounded-md focus:outline-none focus:border-zinc-500"
+                      />
+                      <button
+                        onClick={(e) => handleSaveRename(thread.id, e)}
+                        className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                        title="Save"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingThreadId(null);
+                        }}
+                        className="p-1 text-zinc-400 hover:bg-zinc-100 rounded"
+                        title="Cancel"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+                        <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-zinc-900' : 'text-zinc-400'}`} />
+                        <span className="truncate">{thread.title || 'Untitled Chat'}</span>
+                      </div>
+
+                      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
+                        <button
+                          onClick={(e) => handleStartRename(thread, e)}
+                          className="p-1 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200/60 rounded"
+                          title="Rename"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={(e) => handleDeleteThread(thread.id, e)}
+                          className="p-1 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Sidebar Footer */}
+        <div className="p-3 border-t border-zinc-100 bg-zinc-50/50 flex items-center justify-between text-[11px] text-zinc-500">
+          <span className="truncate">{config?.college_name || 'Bharti.ai'}</span>
           <button
-            onClick={() => setNoticesOpen(!noticesOpen)}
-            className="px-3 sm:px-4 py-2 bg-white brutal-border hover:bg-[#111111] hover:text-white text-[#111111] text-[11px] sm:text-xs font-bold uppercase tracking-widest flex items-center gap-1.5 sm:gap-2 transition whitespace-nowrap min-h-[38px] sm:min-h-[40px] brutal-shadow-active shrink-0 ml-2"
+            onClick={onOpenSettings}
+            className="hover:text-zinc-800 underline transition-colors"
           >
-            <Bell className="w-4 h-4 text-[#E25A3F]" />
-            <span className="hidden sm:inline">Notice Board</span>
-            <span className="sm:hidden text-[10px] font-black">Notices</span>
+            Settings
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Chat Workspace */}
+      <section className="flex-1 flex flex-col h-full overflow-hidden bg-white relative">
+        {/* Mobile Sub-Header: Thread Name & Hamburger */}
+        <div className="sm:hidden h-11 px-3 border-b border-zinc-100 flex items-center justify-between bg-white shrink-0">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-1.5 -ml-1 text-zinc-600 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 flex items-center gap-1.5 text-xs font-medium"
+          >
+            <Menu className="w-4 h-4" />
+            <span>Chats</span>
+          </button>
+
+          <span className="text-xs font-medium text-zinc-800 truncate max-w-[180px]">
+            {threads.find((t) => t.id === activeThreadId)?.title || 'New Chat'}
+          </span>
+
+          <button
+            onClick={handleStartNewChat}
+            className="p-1.5 text-zinc-600 hover:text-zinc-900 rounded-lg hover:bg-zinc-100"
+            title="Start new chat"
+          >
+            <Plus className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Messages Stream */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-8 space-y-6 sm:space-y-8 pb-36 sm:pb-36 no-scrollbar bg-white">
-          {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center max-w-lg mx-auto px-2 py-4">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white brutal-border p-2 mb-4 sm:mb-6 brutal-shadow flex items-center justify-center overflow-hidden shrink-0">
-                <img 
-                  src={config?.logo_url || "/logo.png"} 
-                  alt="Bharti.ai" 
-                  className="w-full h-full object-contain"
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                />
-              </div>
-              <h2 className="text-lg sm:text-2xl font-heading font-extrabold text-[#111111] mb-2 sm:mb-3 uppercase tracking-tight">
-                {config?.welcome_message || 'Ask Bharti.ai'}
-              </h2>
-              <p className="text-xs sm:text-sm font-medium text-[#111111]/70 leading-relaxed max-w-sm">
-                Ask about examination dates, syllabi, university notices, regulations, or course notes. All responses cite verified documents.
-              </p>
+        {/* Messages Scroll Area */}
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6">
+          <div className="max-w-3xl mx-auto w-full space-y-6">
+            {messages.length === 0 ? (
+              /* Minimalist Empty State */
+              <div className="py-8 sm:py-14 flex flex-col items-center text-center animate-in fade-in duration-300">
+                <div className="w-12 h-12 rounded-2xl bg-zinc-100 border border-zinc-200/80 flex items-center justify-center text-zinc-800 mb-4 shadow-xs">
+                  <Sparkles className="w-6 h-6 text-zinc-700" />
+                </div>
 
-              {/* 1-Tap Quick Starter Prompts for Mobile & Desktop */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-5 sm:mt-6 w-full text-left">
-                {[
-                  { text: "Exam Datesheet & Timetable", query: "What are the latest examination schedules and datesheet notices?" },
-                  { text: "Syllabus & Course Modules", query: "What is the syllabus structure and subjects for this semester?" },
-                  { text: "Fee Deadlines & Scholarships", query: "What are the fee payment deadlines and scholarship notifications?" },
-                  { text: "Attendance & Leave Ordinance", query: "What are the official attendance requirements and leave policies?" }
-                ].map((item, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => {
-                      setInput(item.query);
-                    }}
-                    className="p-2.5 sm:p-3 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white brutal-border brutal-shadow-active transition-all text-left flex items-center justify-between group min-h-[44px]"
+                <h2 className="text-xl sm:text-2xl font-semibold text-zinc-900 tracking-tight">
+                  How can I help you today?
+                </h2>
+                <p className="text-xs sm:text-sm text-zinc-500 mt-1.5 max-w-md leading-relaxed">
+                  Ask questions about Bharti Vidyapeeth — admissions, fee structures, examination datesheets, and course syllabus.
+                </p>
+
+                {/* 4 Minimalist Prompt Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-8 w-full text-left">
+                  {quickPrompts.map((card, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => handleSend(card.prompt)}
+                      className="p-3.5 rounded-xl border border-zinc-200/80 bg-white hover:border-zinc-300 hover:bg-zinc-50/70 hover:shadow-sm transition-all group flex flex-col justify-between"
+                    >
+                      <div>
+                        <span className="text-xs font-medium text-zinc-900 group-hover:text-zinc-950 block">
+                          {card.title}
+                        </span>
+                        <span className="text-[11px] text-zinc-500 mt-1 block leading-normal">
+                          {card.desc}
+                        </span>
+                      </div>
+                      <div className="mt-2.5 flex items-center gap-1 text-[11px] text-zinc-400 group-hover:text-zinc-700">
+                        <span>Ask this</span>
+                        <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              /* Chat Message Stream */
+              messages.map((msg, index) => {
+                const isUser = msg.role === 'user';
+                return (
+                  <div
+                    key={msg.id || index}
+                    className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} animate-in fade-in duration-200`}
                   >
-                    <span className="text-[11px] font-bold uppercase tracking-wider line-clamp-1">{item.text}</span>
-                    <ArrowRight className="w-3.5 h-3.5 text-[#E25A3F] group-hover:translate-x-1 transition-transform shrink-0 ml-1.5" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            messages.map((m, index) => (
-              <div
-                key={index}
-                className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
-              >
-                <div
-                  className={`max-w-[95%] sm:max-w-[80%] px-5 py-4 leading-relaxed brutal-border ${
-                    m.role === 'user'
-                      ? 'bg-[#111111] text-white shadow-[4px_4px_0px_0px_rgba(226,90,63,1)]'
-                      : 'bg-white text-[#111111] brutal-shadow'
-                  }`}
-                >
-                  <FormattedMessage content={m.content} isUser={m.role === 'user'} />
+                    {/* Message Bubble */}
+                    <div
+                      className={`relative ${
+                        isUser
+                          ? 'bg-zinc-900 text-white rounded-2xl rounded-tr-xs px-4 py-3 max-w-[85%] sm:max-w-[75%] shadow-xs'
+                          : 'bg-white border border-zinc-200/80 rounded-2xl rounded-tl-xs px-4 sm:px-5 py-4 max-w-[98%] sm:max-w-[88%] text-zinc-800 shadow-xs'
+                      }`}
+                    >
+                      <FormattedMessage content={msg.content} isUser={isUser} />
 
-                  {/* Assistant Action Bar: Sources, Copy, Feedback */}
-                  {m.role !== 'user' && (
-                    <div className="mt-4 pt-3 border-t-[1.5px] border-[#111111]/15 opacity-95 flex flex-wrap items-center justify-between gap-2.5">
-                      {m.sources && m.sources.length > 0 ? (
-                        <button
-                          onClick={() => setSelectedSources(m.sources)}
-                          className="text-[11px] font-bold uppercase tracking-widest flex items-center gap-1.5 min-h-[32px] px-3 py-1.5 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white text-[#111111] border-[1.5px] border-[#111111] transition shadow-xs group"
-                          title="View verified references from college documents"
-                        >
-                          <BookOpen className="w-3.5 h-3.5 text-[#E25A3F]" />
-                          <span>{m.sources.length} Verified Source{m.sources.length === 1 ? '' : 's'}</span>
-                        </button>
-                      ) : (
-                        <div />
+                      {/* Source Citation Pills for Assistant */}
+                      {!isUser && msg.sources && msg.sources.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-zinc-100 space-y-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 block">
+                            Retrieved Sources ({msg.sources.length})
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {msg.sources.map((src, sIdx) => {
+                              const title = src.document_title || src.title || 'Official Document';
+                              const pageStr = src.page ? ` (p. ${src.page})` : '';
+                              return (
+                                <button
+                                  key={sIdx}
+                                  onClick={() => setSelectedSource(src)}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-700 hover:text-zinc-900 transition-colors shadow-2xs"
+                                  title="View source citation and excerpt"
+                                >
+                                  <FileText className="w-3 h-3 text-zinc-500" />
+                                  <span className="truncate max-w-[200px]">{title}{pageStr}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                       )}
+                    </div>
 
-                      <div className="flex items-center gap-1.5">
+                    {/* Action Bar for Assistant */}
+                    {!isUser && (
+                      <div className="flex items-center gap-1 mt-1.5 px-1 text-zinc-400">
                         <button
-                          onClick={() => handleCopyMessage(m.id || index, m.content)}
-                          className="px-2.5 py-1.5 border-[1.5px] border-[#111111] bg-white hover:bg-[#F4F1EA] text-[#111111] transition text-[11px] font-bold uppercase tracking-wider flex items-center gap-1"
-                          title="Copy Answer"
+                          onClick={() => handleCopy(msg.id, msg.content)}
+                          className="p-1 hover:text-zinc-700 rounded hover:bg-zinc-100 transition-colors flex items-center gap-1 text-[11px]"
+                          title="Copy response"
                         >
-                          {copiedMessageId === (m.id || index) ? (
+                          {copiedMessageId === msg.id ? (
                             <>
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                              <span className="text-emerald-700">Copied!</span>
+                              <Check className="w-3 h-3 text-emerald-500" />
+                              <span className="text-emerald-600 font-medium">Copied</span>
                             </>
                           ) : (
                             <>
-                              <Copy className="w-3.5 h-3.5 text-[#111111]/70" />
-                              <span className="hidden sm:inline">Copy</span>
+                              <Copy className="w-3 h-3" />
+                              <span>Copy</span>
                             </>
                           )}
                         </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
 
-                        <button
-                          onClick={() => handleFeedback(m.id, 1)}
-                          className={`p-1.5 border-[1.5px] border-[#111111] transition ${m.feedback === 1 ? 'bg-[#E25A3F] text-white border-[#E25A3F]' : 'bg-white hover:bg-[#F4F1EA] text-[#111111]'}`}
-                          title="Helpful Answer"
-                        >
-                          <ThumbsUp className="w-3.5 h-3.5" />
+            {/* Loading Indicator */}
+            {loading && (
+              <div className="flex items-start gap-3 animate-in fade-in duration-150">
+                <div className="bg-white border border-zinc-200/80 rounded-2xl rounded-tl-xs px-4 py-3 shadow-xs flex items-center gap-2.5 text-xs text-zinc-500">
+                  <div className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0.2s]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0.4s]" />
+                  </div>
+                  <span>Searching verified college database...</span>
+                </div>
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+
+        {/* Minimalist Floating Input Container */}
+        <div className="p-3 sm:p-4 bg-white/95 backdrop-blur-md border-t border-zinc-100 shrink-0">
+          <div className="max-w-3xl mx-auto w-full">
+            {/* Active Tag Filters */}
+            {activeTags.length > 0 && (
+              <div className="flex items-center gap-1.5 mb-2 overflow-x-auto no-scrollbar py-0.5">
+                <span className="text-[11px] text-zinc-400 shrink-0">Filtered by:</span>
+                {activeTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-zinc-100 text-zinc-800 border border-zinc-200 shrink-0"
+                  >
+                    #{tag}
+                    <button
+                      onClick={() => handleTagToggle(tag)}
+                      className="hover:text-red-500"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                <button
+                  onClick={() => setActiveTags([])}
+                  className="text-[10px] text-zinc-400 hover:text-zinc-600 underline shrink-0"
+                >
+                  Clear tags
+                </button>
+              </div>
+            )}
+
+            {/* Prompt Box */}
+            <div className="relative rounded-2xl border border-zinc-300 focus-within:border-zinc-500 focus-within:ring-2 focus-within:ring-zinc-100 bg-white shadow-xs p-1.5 transition-all flex flex-col">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                rows={1}
+                placeholder="Ask anything about Bharti Vidyapeeth (e.g. Sem 3 datesheet, tuition fees)..."
+                className="w-full resize-none border-0 bg-transparent px-3 py-2 text-xs sm:text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-0 max-h-36 leading-relaxed"
+              />
+
+              <div className="flex items-center justify-between pt-1 px-1">
+                {/* Left: Tag Picker Toggle */}
+                <div className="relative">
+                  <button
+                    onClick={() => setTagsPickerOpen(!tagsPickerOpen)}
+                    className="px-2.5 py-1 text-[11px] text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg flex items-center gap-1 transition-colors"
+                    title="Filter query by department, semester, or topic tag"
+                  >
+                    <Tag className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Add Topic Tag</span>
+                  </button>
+
+                  {/* Tag Selector Popover */}
+                  {tagsPickerOpen && (
+                    <div className="absolute bottom-8 left-0 w-72 bg-white rounded-xl border border-zinc-200 shadow-xl p-3 z-50 animate-in zoom-in-95 duration-100">
+                      <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
+                        <span className="text-xs font-semibold text-zinc-800">Campus Keywords</span>
+                        <button onClick={() => setTagsPickerOpen(false)}>
+                          <X className="w-3.5 h-3.5 text-zinc-400 hover:text-zinc-600" />
                         </button>
-                        <button
-                          onClick={() => handleFeedback(m.id, -1)}
-                          className={`p-1.5 border-[1.5px] border-[#111111] transition ${m.feedback === -1 ? 'bg-[#1D2330] text-white border-[#1D2330]' : 'bg-white hover:bg-[#F4F1EA] text-[#111111]'}`}
-                          title="Not Helpful"
-                        >
-                          <ThumbsDown className="w-3.5 h-3.5" />
-                        </button>
+                      </div>
+
+                      <div className="my-2">
+                        <input
+                          type="text"
+                          placeholder="Search tags (e.g. Sem 3, Datesheet)..."
+                          value={tagSearch}
+                          onChange={(e) => setTagSearch(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs border border-zinc-200 rounded-lg focus:outline-none focus:border-zinc-400"
+                        />
+                      </div>
+
+                      <div className="max-h-40 overflow-y-auto space-y-1 no-scrollbar pt-1">
+                        {CAMPUS_KEYWORDS.filter((k) =>
+                          k.toLowerCase().includes(tagSearch.toLowerCase())
+                        ).map((keyword) => {
+                          const isSelected = activeTags.includes(keyword);
+                          return (
+                            <button
+                              key={keyword}
+                              onClick={() => handleTagToggle(keyword)}
+                              className={`w-full text-left px-2 py-1 rounded text-xs flex items-center justify-between ${
+                                isSelected
+                                  ? 'bg-zinc-900 text-white font-medium'
+                                  : 'hover:bg-zinc-100 text-zinc-700'
+                              }`}
+                            >
+                              <span>{keyword}</span>
+                              {isSelected && <Check className="w-3 h-3" />}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
                 </div>
-              </div>
-            ))
-          )}
 
-          {loading && (
-            <div className="flex items-center gap-3 text-[#111111] font-bold uppercase tracking-widest text-[10px] bg-white w-fit px-5 py-4 brutal-border brutal-shadow">
-              <div className="w-2 h-2 bg-[#E25A3F] animate-ping" /> Searching university records...
-            </div>
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Floating Input Dock */}
-        <div className="absolute bottom-0 w-full p-2.5 sm:p-6 bg-gradient-to-t from-white via-white/95 to-transparent pt-6 sm:pt-10 z-30 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
-          
-          {/* Backdrop to dismiss keywords on outside click */}
-          {keywordsOpen && (
-            <div 
-              className="fixed inset-0 z-20 cursor-default"
-              onClick={() => setKeywordsOpen(false)}
-            />
-          )}
-
-          {/* Keywords Popup Drawer (100 Campus Keywords) */}
-          {keywordsOpen && (
-            <div className="relative z-30 max-w-4xl mx-auto mb-2 sm:mb-3 bg-[#F4F1EA] brutal-border p-3 sm:p-4 brutal-shadow max-h-56 sm:max-h-72 overflow-y-auto animate-in fade-in slide-in-from-bottom-2 duration-200">
-              <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b-[1.5px] border-[#111111] sticky top-0 bg-[#F4F1EA] z-10">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <Hash className="w-4 h-4 text-[#E25A3F] shrink-0" />
-                  <span className="font-heading font-extrabold text-[#111111] text-xs uppercase tracking-wider truncate">
-                    Topics ({CAMPUS_KEYWORDS.length})
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-[#111111]/50" />
-                    <input
-                      type="text"
-                      placeholder="Filter..."
-                      value={keywordSearch}
-                      onChange={(e) => setKeywordSearch(e.target.value)}
-                      className="pl-7 pr-2 py-1 bg-white brutal-border text-base sm:text-[11px] font-bold text-[#111111] outline-none w-28 sm:w-44 min-h-[34px]"
-                    />
-                  </div>
-                  <button 
-                    onClick={() => setKeywordsOpen(false)}
-                    className="p-1.5 bg-white brutal-border hover:bg-[#111111] hover:text-white transition min-h-[34px] min-w-[34px] flex items-center justify-center"
-                    title="Close (ESC)"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Keyword Pills */}
-              <div className="flex flex-wrap gap-1 sm:gap-1.5">
-                {CAMPUS_KEYWORDS.filter(k => k.toLowerCase().includes(keywordSearch.toLowerCase())).map((keyword) => {
-                  const isSelected = activeTags.includes(keyword);
-                  return (
-                    <button
-                      key={keyword}
-                      type="button"
-                      onClick={() => {
-                        if (isSelected) {
-                          setActiveTags(activeTags.filter(t => t !== keyword));
-                        } else {
-                          setActiveTags([...activeTags, keyword]);
-                          setInput(prev => prev ? `${prev} ${keyword}` : keyword);
-                        }
-                      }}
-                      className={`text-[10px] sm:text-[11px] font-bold uppercase tracking-wider px-2 sm:px-2.5 py-1 brutal-border transition-all flex items-center gap-1 min-h-[32px] ${
-                        isSelected 
-                          ? 'bg-[#111111] text-white brutal-shadow-active' 
-                          : 'bg-white hover:bg-[#E25A3F] hover:text-white text-[#111111]'
-                      }`}
-                    >
-                      <span>{keyword}</span>
-                      {isSelected && <Check className="w-3 h-3" />}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Bottom Done bar for mobile users */}
-              <div className="mt-3 pt-2.5 border-t border-[#111111]/20 flex items-center justify-between">
-                <span className="text-[10px] text-[#111111]/60 font-bold uppercase">
-                  {activeTags.length} tag{activeTags.length === 1 ? '' : 's'} selected
-                </span>
+                {/* Right: Send Button */}
                 <button
-                  type="button"
-                  onClick={() => setKeywordsOpen(false)}
-                  className="px-3.5 py-1.5 bg-[#111111] text-white text-[10px] font-bold uppercase tracking-wider brutal-border hover:bg-[#E25A3F] transition min-h-[34px]"
+                  onClick={() => handleSend()}
+                  disabled={!input.trim() || loading}
+                  className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+                    input.trim() && !loading
+                      ? 'bg-zinc-900 text-white hover:bg-zinc-800 shadow-xs'
+                      : 'bg-zinc-100 text-zinc-400 cursor-not-allowed'
+                  }`}
+                  aria-label="Send query"
                 >
-                  Done
+                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
                 </button>
               </div>
             </div>
-          )}
 
-          {/* Active Tags Bar */}
-          {activeTags.length > 0 && (
-            <div className="max-w-4xl mx-auto mb-2 flex flex-wrap items-center gap-1 sm:gap-1.5 px-1">
-              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-[#111111]/60 mr-1 flex items-center gap-1">
-                <Tag className="w-3 h-3 text-[#E25A3F]" /> Active:
-              </span>
-              {activeTags.map((t) => (
-                <span 
-                  key={t}
-                  className="bg-[#111111] text-white text-[9px] sm:text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 brutal-border flex items-center gap-1"
-                >
-                  {t}
-                  <button onClick={() => setActiveTags(activeTags.filter(item => item !== t))}>
-                    <X className="w-3 h-3 hover:text-[#E25A3F]" />
-                  </button>
-                </span>
-              ))}
-              <button 
-                onClick={() => setActiveTags([])}
-                className="text-[9px] font-bold uppercase text-[#E25A3F] underline ml-1.5"
-              >
-                Clear All
-              </button>
-            </div>
-          )}
-
-          <form onSubmit={handleSend} className="max-w-4xl mx-auto flex items-center gap-1.5 sm:gap-3 bg-white brutal-border p-1.5 sm:p-2 brutal-shadow">
-            {/* Clean Plus Button for Keywords */}
-            <button
-              type="button"
-              onClick={() => setKeywordsOpen(!keywordsOpen)}
-              className={`p-2.5 sm:p-3 brutal-border transition-all flex items-center justify-center shrink-0 min-h-[44px] min-w-[44px] ${
-                keywordsOpen || activeTags.length > 0
-                  ? 'bg-[#111111] text-white'
-                  : 'bg-[#F4F1EA] hover:bg-[#111111] hover:text-white text-[#111111]'
-              }`}
-              title="Add Subject / Topic Keywords"
-              aria-label="Add topic keywords"
-            >
-              <Plus className={`w-5 h-5 transition-transform ${keywordsOpen ? 'rotate-45' : ''}`} />
-            </button>
-
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSend();
-              }}
-              placeholder="Ask anything (exams, syllabus, notices)..."
-              className="flex-1 px-2.5 sm:px-4 py-2.5 sm:py-3 bg-transparent border-none focus:ring-0 focus:outline-none font-bold text-base sm:text-sm text-[#111111] placeholder:text-[#111111]/40 min-w-0"
-            />
-            <button
-              type="submit"
-              disabled={loading || !input.trim()}
-              className="px-3.5 sm:px-6 py-2.5 sm:py-3 bg-[#E25A3F] disabled:opacity-40 text-white font-bold uppercase tracking-widest brutal-border brutal-shadow-active transition-all flex items-center justify-center min-h-[44px] min-w-[44px] sm:min-h-[48px] shrink-0"
-              aria-label="Send message"
-            >
-              <Send className="w-4 h-4 sm:mr-1.5" />
-              <span className="hidden sm:inline text-xs">Send</span>
-            </button>
-          </form>
+            {/* Disclaimer */}
+            <p className="text-[11px] text-zinc-400 text-center mt-2">
+              Institutional AI references verified college documents. Always confirm official notifications with the administration.
+            </p>
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* Sources Drawer Modal */}
-      {selectedSources && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[70] flex justify-end animate-in fade-in duration-200"
-          onClick={() => setSelectedSources(null)}
+      {/* Source Citation Modal / Drawer */}
+      {selectedSource && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setSelectedSource(null)}
         >
-          <div 
+          <div
+            className="bg-white rounded-2xl border border-zinc-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]"
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:w-[460px] md:w-[500px] bg-[#F4F1EA] border-l-[1.5px] border-[#111111] h-full flex flex-col brutal-shadow animate-in slide-in-from-right duration-200 relative"
           >
-            {/* Sticky Header - Always Visible */}
-            <div className="p-3.5 sm:p-5 bg-white border-b-[1.5px] border-[#111111] flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-xs pt-[max(0.875rem,env(safe-area-inset-top))]">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#E25A3F]/10 brutal-border flex items-center justify-center">
-                  <BookOpen className="w-5 h-5 text-[#E25A3F]" />
-                </div>
-                <div>
-                  <h3 className="font-heading font-extrabold text-[#111111] text-base uppercase tracking-tight">
-                    Verified Sources
-                  </h3>
-                  <p className="text-[11px] text-[#111111]/60 font-bold uppercase tracking-wider">
-                    {selectedSources.length} cited reference{selectedSources.length === 1 ? '' : 's'}
-                  </p>
-                </div>
+            <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-zinc-600" />
+                <h3 className="font-semibold text-zinc-900 text-sm truncate max-w-sm">
+                  {selectedSource.document_title || selectedSource.title || 'Source Reference'}
+                </h3>
               </div>
-              <button 
-                onClick={() => setSelectedSources(null)} 
-                className="px-3.5 py-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white text-[#111111] text-xs font-bold uppercase tracking-wider brutal-border brutal-shadow-active transition flex items-center gap-1.5"
-                title="Close (ESC)"
+              <button
+                onClick={() => setSelectedSource(null)}
+                className="p-1 text-zinc-400 hover:text-zinc-700 rounded-lg"
               >
                 <X className="w-4 h-4" />
-                <span>Close</span>
-                <span className="text-[9px] opacity-60 ml-0.5 sm:inline hidden">(ESC)</span>
               </button>
             </div>
 
-            {/* Scrollable Sources List */}
-            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
-              {selectedSources.map((src, i) => (
-                <div key={i} className="p-4 bg-white brutal-border brutal-shadow text-xs space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 bg-[#111111] text-white">
-                      Source #{i + 1}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#E25A3F] bg-[#E25A3F]/10 px-2 py-0.5 border border-[#E25A3F]/30">
-                      {src.domain || 'Academics'}
-                    </span>
-                  </div>
-                  
-                  <h4 className="font-bold text-[#111111] text-sm uppercase leading-snug">
-                    {src.title}
-                  </h4>
+            <div className="p-5 space-y-4 overflow-y-auto no-scrollbar text-xs">
+              <div className="flex flex-wrap gap-2 text-[11px]">
+                {selectedSource.page && (
+                  <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-medium">
+                    Page {selectedSource.page}
+                  </span>
+                )}
+                {selectedSource.section && (
+                  <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-medium">
+                    Section: {selectedSource.section}
+                  </span>
+                )}
+                {selectedSource.department && (
+                  <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-medium">
+                    Dept: {selectedSource.department}
+                  </span>
+                )}
+                {selectedSource.semester && (
+                  <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-medium">
+                    Semester {selectedSource.semester}
+                  </span>
+                )}
+              </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t-[1.5px] border-[#111111]/15 text-[11px]">
-                    {src.page && (
-                      <div className="bg-[#F4F1EA] p-2 border border-[#111111]/10">
-                        <span className="text-[9px] font-bold text-[#111111]/50 uppercase tracking-widest block">Page</span>
-                        <span className="font-bold text-[#111111]">{src.page}</span>
-                      </div>
-                    )}
-                    {src.section && (
-                      <div className="bg-[#F4F1EA] p-2 border border-[#111111]/10 col-span-2 sm:col-span-1">
-                        <span className="text-[9px] font-bold text-[#111111]/50 uppercase tracking-widest block">Section</span>
-                        <span className="font-bold text-[#111111] truncate block">{src.section}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {src.source_url ? (
-                    <div className="pt-2 border-t border-[#111111]/10">
-                      <a 
-                        href={src.source_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#E25A3F] uppercase tracking-wider hover:underline"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" /> View Original Document ↗
-                      </a>
-                    </div>
-                  ) : (
-                    <div className="pt-2 border-t border-[#111111]/10 text-[10px] text-[#111111]/50 font-semibold uppercase tracking-wider">
-                      Verified Internal College Record
-                    </div>
-                  )}
+              <div>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 block mb-1.5">
+                  Extracted Context Chunk
+                </span>
+                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200/80 text-zinc-800 leading-relaxed font-mono text-[11.5px] whitespace-pre-wrap">
+                  {selectedSource.content || selectedSource.snippet || 'No text snippet available.'}
                 </div>
-              ))}
-            </div>
+              </div>
 
-            {/* Sticky Bottom Bar - Prominent Way Out */}
-            <div className="p-3 sm:p-4 bg-white border-t-[1.5px] border-[#111111] shrink-0 shadow-lg sticky bottom-0 z-20 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
-              <button
-                onClick={() => setSelectedSources(null)}
-                className="w-full py-3 sm:py-3.5 bg-[#111111] hover:bg-[#E25A3F] text-white font-bold uppercase tracking-widest text-xs brutal-border brutal-shadow-active transition flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[46px]"
-              >
-                <X className="w-4 h-4" /> Back to Chat
-              </button>
+              {selectedSource.source_url && (
+                <div className="pt-2">
+                  <a
+                    href={selectedSource.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Open Official Document URL</span>
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Notice Board Drawer Modal */}
+      {/* Notice Board Drawer / Modal */}
       {noticesOpen && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[70] flex justify-end animate-in fade-in duration-200"
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
           onClick={() => setNoticesOpen(false)}
         >
-          <div 
+          <div
+            className="bg-white rounded-2xl border border-zinc-200 shadow-2xl max-w-xl w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]"
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:w-[460px] md:w-[500px] bg-[#F4F1EA] border-l-[1.5px] border-[#111111] h-full flex flex-col brutal-shadow animate-in slide-in-from-right duration-200 relative"
           >
-            {/* Sticky Header */}
-            <div className="p-3.5 sm:p-5 bg-white border-b-[1.5px] border-[#111111] flex items-center justify-between shrink-0 sticky top-0 z-20 shadow-xs pt-[max(0.875rem,env(safe-area-inset-top))]">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#E25A3F]/10 brutal-border flex items-center justify-center">
-                  <Bell className="w-5 h-5 text-[#E25A3F]" />
-                </div>
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+              <div className="flex items-center gap-2">
+                <Bell className="w-4 h-4 text-zinc-700" />
                 <div>
-                  <h3 className="font-heading font-extrabold text-[#111111] text-base uppercase tracking-tight">
-                    Campus Notice Board
-                  </h3>
-                  <p className="text-[11px] text-[#111111]/60 font-bold uppercase tracking-wider">
-                    Official Announcements & Inquiries
-                  </p>
+                  <h3 className="font-semibold text-zinc-900 text-sm">Notice Board</h3>
+                  <p className="text-[11px] text-zinc-500">Official circulars, schedules, and college notices</p>
                 </div>
               </div>
-              <button 
-                onClick={() => setNoticesOpen(false)} 
-                className="px-3.5 py-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white text-[#111111] text-xs font-bold uppercase tracking-wider brutal-border brutal-shadow-active transition flex items-center gap-1.5 min-h-[38px]"
-                title="Close (ESC)"
-              >
-                <X className="w-4 h-4" />
-                <span>Close</span>
-              </button>
-            </div>
-
-            {/* Quick Inquiries List */}
-            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-3">
-              <p className="text-xs font-bold uppercase tracking-wider text-[#111111]/70 mb-3">
-                Click any topic to query verified university notices & circulars:
-              </p>
-
-              {[
-                { title: "Examination Schedule & Timetable", desc: "Datesheets, exam timing & admit card notifications", query: "What are the latest examination schedules and datesheet notices?" },
-                { title: "Results & Re-Evaluation Rules", desc: "Grade publication, scrutiny procedure & marksheet distribution", query: "What are the latest university results and re-evaluation rules?" },
-                { title: "Semester Fee & Scholarship Deadlines", desc: "Tuition deadlines, fine waivers & state/central scholarship circulars", query: "What are the fee payment deadlines and scholarship notifications?" },
-                { title: "Academic Calendar & Holidays", desc: "Semester commencement, vacations, exam windows & gazetted holidays", query: "Show me the university academic calendar and holiday list" },
-                { title: "Attendance & Medical Leave Ordinance", desc: "75% attendance criteria, medical certificate submission & condonation rules", query: "What are the official attendance and medical leave regulations?" }
-              ].map((item, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => {
-                    setInput(item.query);
-                    setNoticesOpen(false);
-                  }}
-                  className="w-full text-left p-3.5 sm:p-4 bg-white hover:bg-[#F4F1EA] brutal-border brutal-shadow-active transition space-y-1.5 group min-h-[44px]"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-heading font-extrabold text-xs uppercase text-[#111111] group-hover:text-[#E25A3F] transition-colors">
-                      {item.title}
-                    </span>
-                    <ArrowRight className="w-4 h-4 text-[#111111]/40 group-hover:text-[#E25A3F] group-hover:translate-x-1 transition-all shrink-0" />
-                  </div>
-                  <p className="text-[11px] text-[#111111]/70 font-medium">
-                    {item.desc}
-                  </p>
-                </button>
-              ))}
-            </div>
-
-            {/* Sticky Bottom Bar */}
-            <div className="p-3 sm:p-4 bg-white border-t-[1.5px] border-[#111111] shrink-0 sticky bottom-0 z-20 pb-[max(0.875rem,env(safe-area-inset-bottom))]">
               <button
                 onClick={() => setNoticesOpen(false)}
-                className="w-full py-3 sm:py-3.5 bg-[#111111] hover:bg-[#E25A3F] text-white font-bold uppercase tracking-widest text-xs brutal-border brutal-shadow-active transition flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[46px]"
+                className="p-1 text-zinc-400 hover:text-zinc-700 rounded-lg"
               >
-                <X className="w-4 h-4" /> Back to Chat
+                <X className="w-4 h-4" />
               </button>
+            </div>
+
+            {/* Filter Search */}
+            <div className="p-4 border-b border-zinc-100 bg-white">
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="text"
+                  placeholder="Filter notices (e.g. datesheet, fees, holiday)..."
+                  value={noticeSearch}
+                  onChange={(e) => setNoticeSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-zinc-200 rounded-lg focus:outline-none focus:border-zinc-400"
+                />
+              </div>
+            </div>
+
+            {/* Notices List */}
+            <div className="p-5 space-y-3 overflow-y-auto no-scrollbar flex-1">
+              {noticesLoading ? (
+                <div className="py-8 text-center text-xs text-zinc-400">Loading notices...</div>
+              ) : notices.length === 0 ? (
+                <div className="py-8 text-center text-xs text-zinc-400">
+                  <FileText className="w-6 h-6 mx-auto mb-2 opacity-30 stroke-1" />
+                  <span>No official notices currently uploaded.</span>
+                </div>
+              ) : (
+                notices
+                  .filter((n) =>
+                    n.title.toLowerCase().includes(noticeSearch.toLowerCase()) ||
+                    (n.subject && n.subject.toLowerCase().includes(noticeSearch.toLowerCase())) ||
+                    (n.department && n.department.toLowerCase().includes(noticeSearch.toLowerCase()))
+                  )
+                  .map((notice) => (
+                    <div
+                      key={notice.id}
+                      className="p-3.5 rounded-xl border border-zinc-200/80 bg-zinc-50/50 hover:bg-zinc-50 transition-colors space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <h4 className="text-xs font-semibold text-zinc-900 leading-snug">{notice.title}</h4>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-200 text-zinc-700 shrink-0">
+                          {notice.document_type || notice.domain || 'Notice'}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                        {notice.department && <span>Dept: {notice.department}</span>}
+                        {notice.semester && <span>Sem: {notice.semester}</span>}
+                        {notice.effective_date && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            Valid from: {notice.effective_date}
+                          </span>
+                        )}
+                      </div>
+
+                      {notice.source_url && (
+                        <div className="pt-1">
+                          <a
+                            href={notice.source_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-zinc-800 hover:text-zinc-950 font-medium underline"
+                          >
+                            <ExternalLink className="w-3 h-3" /> View Notice Document
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  ))
+              )}
             </div>
           </div>
         </div>
