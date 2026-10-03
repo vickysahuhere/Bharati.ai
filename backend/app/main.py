@@ -64,5 +64,12 @@ if frontend_dist.exists():
         target_file = frontend_dist / full_path
         if target_file.exists() and target_file.is_file():
             return FileResponse(target_file)
-        return FileResponse(frontend_dist / "index.html")
+        return FileResponse(
+            frontend_dist / "index.html",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
 

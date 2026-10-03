@@ -204,11 +204,18 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
 
       if (res.ok) {
         const data = await res.json();
-        botContent = data.content;
+        botContent = data.content || '';
         botSources = data.sources || [];
       } else {
         const err = await res.json().catch(() => ({}));
         botContent = err.detail || "Server error while processing your request. Please try again.";
+        botSources = [];
+      }
+
+      // Guarantee content is never empty or blank
+      if (!botContent || !botContent.trim()) {
+        botContent = "I'm sorry, but I couldn't find relevant information in the college database. Please contact the administration.";
+        botSources = [];
       }
 
       const botMsg = {
@@ -548,7 +555,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                       <FormattedMessage content={msg.content} isUser={isUser} />
 
                       {/* Source Citation Pills for Assistant */}
-                      {!isUser && msg.sources && msg.sources.length > 0 && (
+                      {!isUser && msg.content && msg.content.trim() && msg.sources && msg.sources.length > 0 && !msg.content.includes("I'm sorry, but I couldn't find") && (
                         <div className="mt-4 pt-3 border-t border-zinc-100 space-y-2">
                           <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 block">
                             Retrieved Sources ({msg.sources.length})
