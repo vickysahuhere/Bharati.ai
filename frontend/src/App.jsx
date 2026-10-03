@@ -154,16 +154,10 @@ export default function App() {
             />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="font-semibold text-zinc-900 text-sm sm:text-base tracking-tight leading-none">
-                {config?.college_name || 'Bharti.ai'}
-              </h1>
-              <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                Live RAG
-              </span>
-            </div>
-            <p className="text-[11px] text-zinc-500 leading-tight mt-0.5">
+            <h1 className="font-semibold text-zinc-900 text-sm sm:text-base tracking-tight leading-none">
+              {config?.college_name || 'Bharti.ai'}
+            </h1>
+            <p className="text-[11px] text-zinc-500 leading-tight mt-1">
               {view === 'admin' ? '🛡️ Administrator Control Panel' : 'Official Student & Campus Assistant'}
             </p>
           </div>
