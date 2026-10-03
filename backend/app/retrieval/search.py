@@ -169,8 +169,9 @@ def hybrid_search(
     # Reciprocal Rank Fusion (RRF) algorithm:
     sorted_chunks = sorted(chunk_scores.values(), key=lambda x: x["rrf_score"], reverse=True)
     
-    # Filter out extremely low-quality chunks before reranking
-    filtered = [c for c in sorted_chunks if c["rrf_score"] >= min_score or c["vec_score"] >= 0.35]
+    # Filter out irrelevant chunks before reranking
+    # A chunk must have an actual text match (fts_score > 0) OR a genuine vector similarity (vec_score >= 0.30)
+    filtered = [c for c in sorted_chunks if c.get("fts_score", 0) > 0 or c.get("vec_score", 0) >= 0.30]
     
     # RERANKING
     if filtered:

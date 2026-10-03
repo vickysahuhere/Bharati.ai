@@ -1,7 +1,13 @@
 from typing import Dict, Any, List, Optional
+import re
 from app.retrieval.search import hybrid_search
 from app.providers.registry import get_llm
 from app.core.config import get_settings
+
+GREETINGS_PATTERN = re.compile(
+    r"^(hi|hello|hey|hey\s+there|good\s+(morning|afternoon|evening)|greetings|howdy|sup|yo|namaste|what'?s\s+up|who\s+are\s+you|who\s+made\s+you|thanks|thank\s+you|bye|goodbye)\b[\s!.?]*$",
+    re.IGNORECASE
+)
 
 SYSTEM_PROMPT = """You are Bharti.ai, the official conversational AI assistant for Bharati Vidyapeeth University.
 You were built and created by Vicky Sahu, founder of Maithil Studios (maithilstudios.vercel.app).
@@ -94,10 +100,40 @@ def generate_answer(
     4. Returns the AI's response and citations (sources).
     """
     
-    # 0. Rewrite query if there is history
+    # 0. Check for conversational greetings / small talk - bypass document search completely!
+    clean_query = query.strip()
+    if GREETINGS_PATTERN.match(clean_query):
+        settings = get_settings()
+        if settings.groq_api_key:
+            greeting_prompt = """You are Bharti.ai, the official AI assistant for Bharati Vidyapeeth University.
+You were built and created by Vicky Sahu, founder of Maithil Studios (maithilstudios.vercel.app).
+If the user greets you or says hi/hello/hey, reply warmly, introduce yourself briefly, and invite them to ask about admissions, examination datesheets, courses, syllabus, and fee structures.
+Keep the greeting friendly, concise, and helpful."""
+            msgs = [{"role": "system", "content": greeting_prompt}]
+            if chat_history:
+                for msg in chat_history[-4:]:
+                    msgs.append({"role": msg["role"], "content": msg["content"]})
+            msgs.append({"role": "user", "content": query})
+            try:
+                llm = get_llm()
+                ans = llm.generate(msgs, temperature=0.3)
+                return {
+                    "answer": ans,
+                    "sources": [],
+                    "found": True
+                }
+            except Exception:
+                pass
+        return {
+            "answer": "Hello! 👋 I am Bharti.ai, the official assistant for Bharati Vidyapeeth University. How can I help you today with admissions, exam datesheets, syllabus, or fee structures?",
+            "sources": [],
+            "found": True
+        }
+
+    # 1. Rewrite query if there is history
     search_query = rewrite_query(query, chat_history) if chat_history else query
     
-    # 1. Retrieve the most relevant chunks using Hybrid Search (Vector + Full-Text)
+    # 2. Retrieve the most relevant chunks using Hybrid Search (Vector + Full-Text)
     chunks = hybrid_search(
         query=search_query,
         knowledge_domain=knowledge_domain,
@@ -105,7 +141,7 @@ def generate_answer(
         semester=semester,
         subject=subject,
         top_k=5,
-        min_score=0.01
+        min_score=0.15
     )
     
     # 2. Check if relevant context exists
@@ -229,6 +265,18 @@ Strict Directives:
     try:
         llm = get_llm()
         answer = llm.generate(messages, temperature=0.1)
+
+        # If the answer is an out-of-scope refusal, general small-talk, or not-found, do not display sources
+        ans_lower = answer.lower()
+        if (
+            NOT_FOUND_RESPONSE.lower() in ans_lower or
+            "cannot answer questions outside the college domain" in ans_lower or
+            "dedicated exclusively to bharati vidyapeeth" in ans_lower or
+            "how can i assist you with bharati" in ans_lower or
+            "how can i help you with bharati" in ans_lower
+        ):
+            sources = []
+
         return {
             "answer": answer,
             "sources": sources,
