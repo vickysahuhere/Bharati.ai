@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.db.session import pool
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="api/auth/login", auto_error=False)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -127,6 +128,27 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     return UserResponse(
         id=str(row[0]), email=row[1], full_name=row[2], role=row[3], status=row[4]
     )
+
+def get_optional_user(token: Optional[str] = Depends(oauth2_scheme_optional)) -> Optional[UserResponse]:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, get_settings().secret_key, algorithms=[get_settings().jwt_algorithm])
+        user_id: str = payload.get("id")
+        if user_id is None:
+            return None
+        with pool().connection() as conn:
+            row = conn.execute(
+                "SELECT id, email, full_name, role, status FROM users WHERE id = %s", 
+                (user_id,)
+            ).fetchone()
+            if not row or row[4] != 'approved':
+                return None
+            return UserResponse(
+                id=str(row[0]), email=row[1], full_name=row[2], role=row[3], status=row[4]
+            )
+    except Exception:
+        return None
 
 def get_admin_user(current_user: UserResponse = Depends(get_current_user)):
     if current_user.role != 'admin':

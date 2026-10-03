@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 import json
 
 from app.db.session import pool
-from app.api.auth import get_current_user, UserResponse
+from app.api.auth import get_current_user, get_optional_user, UserResponse
 from app.generation.pipeline import generate_answer
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
@@ -20,22 +20,49 @@ class MessageRequest(BaseModel):
     department: Optional[str] = None
     semester: Optional[int] = None
     subject: Optional[str] = None
+    chat_history: Optional[List[Dict[str, str]]] = None
 
 class FeedbackRequest(BaseModel):
     feedback: int # +1 or -1
 
+@router.post("/query")
+def direct_chat_query(
+    req: MessageRequest,
+    current_user: Optional[UserResponse] = Depends(get_optional_user)
+):
+    """
+    Public / Stateless RAG endpoint:
+    Answers institutional queries with thread-isolated chat history without requiring a login!
+    """
+    result = generate_answer(
+        query=req.query,
+        knowledge_domain=req.knowledge_domain,
+        department=req.department,
+        semester=req.semester,
+        subject=req.subject,
+        chat_history=req.chat_history
+    )
+    return {
+        "content": result["answer"],
+        "sources": result["sources"],
+        "found": result.get("found", True)
+    }
+
 @router.post("/sessions", response_model=SessionResponse)
-def create_chat_session(current_user: UserResponse = Depends(get_current_user)):
+def create_chat_session(current_user: Optional[UserResponse] = Depends(get_optional_user)):
+    user_id = current_user.id if current_user else None
     with pool().connection() as conn:
         row = conn.execute(
             "INSERT INTO chat_sessions (user_id) VALUES (%s) RETURNING id, title, created_at",
-            (current_user.id,)
+            (user_id,)
         ).fetchone()
         
     return SessionResponse(id=str(row[0]), title=row[1], created_at=row[2].isoformat())
 
 @router.get("/sessions", response_model=List[SessionResponse])
-def get_chat_sessions(current_user: UserResponse = Depends(get_current_user)):
+def get_chat_sessions(current_user: Optional[UserResponse] = Depends(get_optional_user)):
+    if not current_user:
+        return []
     with pool().connection() as conn:
         rows = conn.execute(
             "SELECT id, title, created_at FROM chat_sessions WHERE user_id = %s ORDER BY created_at DESC",
@@ -45,14 +72,20 @@ def get_chat_sessions(current_user: UserResponse = Depends(get_current_user)):
     return [SessionResponse(id=str(r[0]), title=r[1], created_at=r[2].isoformat()) for r in rows]
 
 @router.get("/sessions/{session_id}/messages")
-def get_session_messages(session_id: str, current_user: UserResponse = Depends(get_current_user)):
+def get_session_messages(session_id: str, current_user: Optional[UserResponse] = Depends(get_optional_user)):
     with pool().connection() as conn:
-        # Check ownership
-        session = conn.execute(
-            "SELECT id FROM chat_sessions WHERE id = %s AND user_id = %s",
-            (session_id, current_user.id)
-        ).fetchone()
-        
+        # Check ownership or guest session
+        if current_user:
+            session = conn.execute(
+                "SELECT id FROM chat_sessions WHERE id = %s AND (user_id = %s OR user_id IS NULL)",
+                (session_id, current_user.id)
+            ).fetchone()
+        else:
+            session = conn.execute(
+                "SELECT id FROM chat_sessions WHERE id = %s",
+                (session_id,)
+            ).fetchone()
+            
         if not session:
             raise HTTPException(status_code=404, detail="Chat session not found")
             
@@ -77,25 +110,39 @@ def get_session_messages(session_id: str, current_user: UserResponse = Depends(g
 def send_message(
     session_id: str,
     req: MessageRequest,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: Optional[UserResponse] = Depends(get_optional_user)
 ):
     with pool().connection() as conn:
-        # Check ownership
-        session = conn.execute(
-            "SELECT id FROM chat_sessions WHERE id = %s AND user_id = %s",
-            (session_id, current_user.id)
-        ).fetchone()
-        
-        if not session:
-            raise HTTPException(status_code=404, detail="Chat session not found")
+        # Check ownership or guest session
+        if current_user:
+            session = conn.execute(
+                "SELECT id FROM chat_sessions WHERE id = %s AND (user_id = %s OR user_id IS NULL)",
+                (session_id, current_user.id)
+            ).fetchone()
+        else:
+            session = conn.execute(
+                "SELECT id FROM chat_sessions WHERE id = %s",
+                (session_id,)
+            ).fetchone()
             
-        # Get message history
+        if not session:
+            # Create session on-the-fly if not found
+            user_id = current_user.id if current_user else None
+            conn.execute(
+                "INSERT INTO chat_sessions (id, user_id) VALUES (%s, %s) ON CONFLICT (id) DO NOTHING",
+                (session_id, user_id)
+            )
+            
+        # Get message history (from DB if present, else fallback to request payload)
         prev_rows = conn.execute(
             "SELECT role, content FROM messages WHERE session_id = %s ORDER BY id ASC",
             (session_id,)
         ).fetchall()
         
-        history = [{"role": r[0], "content": r[1]} for r in prev_rows]
+        if prev_rows:
+            history = [{"role": r[0], "content": r[1]} for r in prev_rows]
+        else:
+            history = req.chat_history or []
         
         # Save user message
         conn.execute(
@@ -135,7 +182,7 @@ def send_message(
 def submit_feedback(
     message_id: int,
     req: FeedbackRequest,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: Optional[UserResponse] = Depends(get_optional_user)
 ):
     if req.feedback not in (1, -1):
         raise HTTPException(status_code=400, detail="Feedback must be 1 or -1")
@@ -145,10 +192,10 @@ def submit_feedback(
             """
             UPDATE messages 
             SET feedback = %s 
-            WHERE id = %s AND session_id IN (SELECT id FROM chat_sessions WHERE user_id = %s)
+            WHERE id = %s
             RETURNING id
             """,
-            (req.feedback, message_id, current_user.id)
+            (req.feedback, message_id)
         ).fetchone()
         
         if not res:
