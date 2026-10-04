@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, FileText, Upload, CheckCircle, XCircle, RefreshCw, 
   Shield, Cpu, Menu, Tag, Plus, X, Search, Zap, AlertCircle, 
-  Clock, Calendar, ArrowLeft, ExternalLink 
+  Clock, Calendar, ArrowLeft, ExternalLink, Trash2 
 } from 'lucide-react';
 import StudentChat from './StudentChat';
 import { CAMPUS_KEYWORDS } from '../config/keywords';
@@ -12,6 +12,7 @@ export default function AdminPanel({ token, onSwitchToChat }) {
   const [pendingUsers, setPendingUsers] = useState([]);
   const [documents, setDocuments] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [purging, setPurging] = useState(false);
   const [message, setMessage] = useState('');
   
   const [file, setFile] = useState(null);
@@ -185,6 +186,31 @@ export default function AdminPanel({ token, onSwitchToChat }) {
       setMessage(`Error processing queue: ${e.message}`);
     } finally {
       setProcessingQueue(false);
+    }
+  };
+
+  const handlePurgeAll = async () => {
+    if (!window.confirm("Are you sure you want to permanently delete ALL documents, chunks, and vector embeddings? This will wipe the database to start completely fresh.")) {
+      return;
+    }
+    setPurging(true);
+    setMessage('');
+    try {
+      const res = await fetch('/api/documents/admin/purge-all', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setMessage('All documents, chunks, and embeddings were successfully deleted.');
+        fetchDocuments();
+      } else {
+        const err = await res.json();
+        setMessage(`Purge failed: ${err.detail || 'Unknown error'}`);
+      }
+    } catch (e) {
+      setMessage(`Error purging documents: ${e.message}`);
+    } finally {
+      setPurging(false);
     }
   };
 
@@ -549,6 +575,15 @@ export default function AdminPanel({ token, onSwitchToChat }) {
                     <p className="text-xs text-zinc-500 mt-0.5">Documents segmented into vector chunks for semantic RAG retrieval.</p>
                   </div>
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={handlePurgeAll}
+                      disabled={purging}
+                      className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-medium rounded-lg inline-flex items-center gap-1.5 transition-colors border border-red-200 shadow-xs"
+                      title="Permanently wipe all documents and vector embeddings"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                      {purging ? 'Purging...' : 'Purge All Data'}
+                    </button>
                     <button
                       onClick={handleProcessQueue}
                       disabled={processingQueue}

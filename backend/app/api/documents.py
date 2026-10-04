@@ -202,6 +202,17 @@ def process_queue(admin: UserResponse = Depends(get_admin_user)):
                 errors.append(f"Job {job_id} error: {e}")
     return {"processed": processed, "errors": errors}
 
+@router.delete("/admin/purge-all")
+def purge_all_documents(admin: UserResponse = Depends(get_admin_user)):
+    """Permanently deletes all ingested documents, versions, chunks, and queued ingestion jobs."""
+    with pool().connection() as conn:
+        with conn.transaction():
+            conn.execute("DELETE FROM chunks")
+            conn.execute("DELETE FROM document_versions")
+            conn.execute("DELETE FROM documents")
+            conn.execute("DELETE FROM jobs WHERE kind='ingest_version'")
+    return {"status": "purged", "message": "All ingested documents and vector chunks have been permanently deleted."}
+
 @router.delete("/{doc_id}")
 def delete_document(doc_id: str, admin: UserResponse = Depends(get_admin_user)):
     with pool().connection() as conn:
