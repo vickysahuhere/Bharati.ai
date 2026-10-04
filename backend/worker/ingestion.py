@@ -4,10 +4,10 @@ import re
 from datetime import datetime
 from typing import Optional, List
 import fitz  # PyMuPDF
-from fastembed import TextEmbedding
 
 from app.db.session import pool
 from app.providers.storage import StorageProvider
+from app.providers.registry import get_embedder
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -61,16 +61,8 @@ def parse_date_to_iso(date_str: str) -> Optional[str]:
             return f"{y:04d}-{m:02d}-{d:02d}"
     return None
 
-# Lazy-load to avoid initializing during import if not needed
-embedding_model = None
-
 def get_embed_model():
-    global embedding_model
-    if embedding_model is None:
-        model_name = get_settings().embedding_model
-        # Enforce threads=1 to prevent CPU starvation and keep memory < 50MB on 512MB RAM
-        embedding_model = TextEmbedding(model_name=model_name, threads=1)
-    return embedding_model
+    return get_embedder()
 
 storage = StorageProvider()
 
@@ -389,7 +381,8 @@ def ingest_version(payload: dict):
             
             # 3. Embedding and Indexing
             model = get_embed_model()
-            model_name = get_settings().embedding_model
+            settings = get_settings()
+            model_name = getattr(model, "model_name", settings.embedding_model)
             
             valid_chunks = [c for c in chunks if c["content"].strip()]
             if not valid_chunks:
@@ -405,7 +398,7 @@ def ingest_version(payload: dict):
                 for b_start in range(0, len(valid_chunks), BATCH_SIZE):
                     b_end = b_start + BATCH_SIZE
                     b_texts = [c["content"] for c in valid_chunks[b_start:b_end]]
-                    embeddings.extend(list(model.embed(b_texts)))
+                    embeddings.extend(model.embed(b_texts))
                 
                 insert_data = []
                 for idx, (chunk_dict, embedding) in enumerate(zip(valid_chunks, embeddings)):
@@ -427,10 +420,12 @@ def ingest_version(payload: dict):
                         "dates": chunk_dates,
                         "semesters": chunk_semesters
                     }
+
+                    emb_list = embedding if isinstance(embedding, list) else embedding.tolist()
                     
                     insert_data.append((
                         doc_id, ver_id, idx, chunk_text, chunk_dict["page"], chunk_section,
-                        json.dumps(chunk_meta), embedding.tolist(), model_name
+                        json.dumps(chunk_meta), emb_list, model_name
                     ))
                     
                 conn.cursor().executemany(

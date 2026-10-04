@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     embedding_provider: str = "fastembed"
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_dim: int = 384
+    openai_api_key: str = ""
+    fastembed_cache_dir: str = "/srv/models_cache"
 
     owner_email: str = ""
     owner_password: str = ""

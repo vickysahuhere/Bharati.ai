@@ -11,8 +11,12 @@ WORKDIR /srv
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-cache lightweight 384-dim embedding model during build so no download occurs at runtime
-RUN python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5')"
+# Pre-cache lightweight 384-dim embedding model to /srv/models_cache with 777 permissions
+ENV FASTEMBED_CACHE_PATH=/srv/models_cache
+ENV HF_HOME=/srv/models_cache
+RUN mkdir -p /srv/models_cache && \
+    python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5', cache_dir='/srv/models_cache', threads=1)" && \
+    chmod -R 777 /srv/models_cache
 
 # Copy backend application source directly into /srv
 COPY backend/ /srv/
@@ -25,6 +29,7 @@ COPY frontend/dist/ /frontend/dist/
 
 ENV DATA_DIR=/srv/data
 ENV COLLEGE_CONFIG=/config/college.yaml
+ENV FASTEMBED_CACHE_DIR=/srv/models_cache
 ENV PORT=8000
 
 EXPOSE 8000
