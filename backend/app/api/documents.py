@@ -211,7 +211,64 @@ def purge_all_documents(admin: UserResponse = Depends(get_admin_user)):
             conn.execute("DELETE FROM document_versions")
             conn.execute("DELETE FROM documents")
             conn.execute("DELETE FROM jobs WHERE kind='ingest_version'")
-    return {"status": "purged", "message": "All ingested documents and vector chunks have been permanently deleted."}
+@router.get("/admin/unresolved-queries")
+def get_unresolved_queries(admin: UserResponse = Depends(get_admin_user)):
+    """Returns unresolved student questions to identify missing documents."""
+    with pool().connection() as conn:
+        try:
+            rows = conn.execute(
+                "SELECT id, query, created_at FROM unresolved_queries ORDER BY created_at DESC LIMIT 100"
+            ).fetchall()
+            return [{"id": r[0], "query": r[1], "created_at": r[2].isoformat()} for r in rows]
+        except Exception:
+            return []
+
+@router.delete("/admin/unresolved-queries/{query_id}")
+def delete_unresolved_query(query_id: int, admin: UserResponse = Depends(get_admin_user)):
+    """Dismisses an unresolved query from the dashboard."""
+    with pool().connection() as conn:
+        try:
+            conn.execute("DELETE FROM unresolved_queries WHERE id = %s", (query_id,))
+        except Exception:
+            pass
+    return {"status": "ok"}
+
+@router.delete("/admin/unresolved-queries")
+def clear_unresolved_queries(admin: UserResponse = Depends(get_admin_user)):
+    """Clears all unresolved queries."""
+    with pool().connection() as conn:
+        try:
+            conn.execute("DELETE FROM unresolved_queries")
+        except Exception:
+            pass
+    return {"status": "ok"}
+
+@router.get("/{doc_id}/chunks")
+def get_document_chunks(doc_id: str, admin: UserResponse = Depends(get_admin_user)):
+    """Returns all parsed chunks and tables for visual inspection in Admin Panel."""
+    with pool().connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT c.id, c.chunk_index, c.content, c.page, c.section, c.metadata, dv.version
+            FROM chunks c
+            JOIN document_versions dv ON c.version_id = dv.id
+            WHERE c.document_id = %s
+            ORDER BY c.page ASC, c.chunk_index ASC
+            """,
+            (doc_id,)
+        ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "chunk_index": r[1],
+            "content": r[2],
+            "page": r[3],
+            "section": r[4],
+            "metadata": r[5] if isinstance(r[5], dict) else {},
+            "version": r[6]
+        }
+        for r in rows
+    ]
 
 @router.delete("/{doc_id}")
 def delete_document(doc_id: str, admin: UserResponse = Depends(get_admin_user)):

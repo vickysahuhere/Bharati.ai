@@ -3,12 +3,13 @@ import {
   Send, Plus, MessageSquare, ThumbsUp, ThumbsDown, BookOpen, 
   Bell, Sparkles, X, Edit2, Check, Menu, Tag, Search, Copy, 
   ExternalLink, Trash2, ArrowUp, ChevronRight, FileText, Calendar, 
-  CreditCard, HelpCircle, Clock, ChevronDown, CheckCircle2 
+  CreditCard, HelpCircle, Clock, ChevronDown, CheckCircle2,
+  Mic, MicOff, FileDown
 } from 'lucide-react';
 import FormattedMessage from './FormattedMessage';
 import { CAMPUS_KEYWORDS } from '../config/keywords';
 
-export default function StudentChat({ adminToken, config, noticesOpen, setNoticesOpen, onOpenSettings }) {
+export default function StudentChat({ adminToken, config, noticesOpen, setNoticesOpen, onOpenSettings, theme }) {
   // Load threads from localStorage
   const [threads, setThreads] = useState(() => {
     try {
@@ -29,6 +30,10 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Voice speech-to-text state
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
+
   // Mobile sidebar & UI state
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState(null);
@@ -40,6 +45,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
   const [notices, setNotices] = useState([]);
   const [noticesLoading, setNoticesLoading] = useState(false);
   const [noticeSearch, setNoticeSearch] = useState('');
+  const [noticeCategoryFilter, setNoticeCategoryFilter] = useState('all');
 
   // Keyword tag filters
   const [tagsPickerOpen, setTagsPickerOpen] = useState(false);
@@ -184,11 +190,26 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
       }));
     }
 
+    const botMsgId = `ast_${Date.now()}`;
+    const initialBotMsg = {
+      id: botMsgId,
+      role: 'assistant',
+      content: '',
+      sources: [],
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, initialBotMsg]);
+
+    let botContent = '';
+    let botSources = [];
+
     try {
       const headers = { 'Content-Type': 'application/json' };
       if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
 
-      const res = await fetch('/api/chat/query', {
+      // Try streaming endpoint first for instant word-by-word delivery
+      const streamRes = await fetch('/api/chat/stream', {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -199,17 +220,57 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
         }),
       });
 
-      let botContent = "I'm sorry, but I couldn't find relevant information in the college database. Please contact the administration.";
-      let botSources = [];
+      if (streamRes.ok && streamRes.body) {
+        const reader = streamRes.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-      if (res.ok) {
-        const data = await res.json();
-        botContent = data.content || '';
-        botSources = data.sources || [];
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const event = JSON.parse(line.slice(6));
+                if (event.type === 'meta') {
+                  botSources = event.sources || [];
+                  setMessages((prev) =>
+                    prev.map((m) => (m.id === botMsgId ? { ...m, sources: botSources } : m))
+                  );
+                } else if (event.type === 'token') {
+                  botContent += event.token;
+                  setMessages((prev) =>
+                    prev.map((m) => (m.id === botMsgId ? { ...m, content: botContent } : m))
+                  );
+                }
+              } catch (err) {
+                // Ignore parse errors on stream boundary
+              }
+            }
+          }
+        }
       } else {
-        const err = await res.json().catch(() => ({}));
-        botContent = err.detail || "Server error while processing your request. Please try again.";
-        botSources = [];
+        // Fallback to non-streaming query
+        const res = await fetch('/api/chat/query', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            query: queryText,
+            chat_history: chatHistory,
+            knowledge_domain: null,
+            subject: activeTags.length > 0 ? activeTags.join(', ') : null,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          botContent = data.content || '';
+          botSources = data.sources || [];
+        }
       }
 
       // Guarantee content is never empty or blank
@@ -218,15 +279,15 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
         botSources = [];
       }
 
-      const botMsg = {
-        id: `ast_${Date.now()}`,
+      const finalBotMsg = {
+        id: botMsgId,
         role: 'assistant',
         content: botContent,
         sources: botSources,
         createdAt: new Date().toISOString(),
       };
 
-      setMessages((prev) => [...prev, botMsg]);
+      setMessages((prev) => prev.map((m) => (m.id === botMsgId ? finalBotMsg : m)));
 
       // Save to localStorage threads
       if (isNewThread) {
@@ -236,7 +297,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
           title,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          messages: [userMsg, botMsg],
+          messages: [userMsg, finalBotMsg],
         };
         setThreads((prev) => [newThread, ...prev]);
         setActiveThreadId(currentThreadId);
@@ -247,7 +308,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
               ? {
                   ...t,
                   updatedAt: new Date().toISOString(),
-                  messages: [...t.messages, userMsg, botMsg],
+                  messages: [...t.messages.filter((m) => m.id !== botMsgId), userMsg, finalBotMsg],
                 }
               : t
           )
@@ -256,16 +317,108 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
     } catch (e) {
       console.error(e);
       const errorMsg = {
-        id: `err_${Date.now()}`,
+        id: botMsgId,
         role: 'assistant',
         content: "Network error contacting the college database. Please check your connection and try again.",
         sources: [],
         createdAt: new Date().toISOString(),
       };
-      setMessages((prev) => [...prev, errorMsg]);
+      setMessages((prev) => prev.map((m) => (m.id === botMsgId ? errorMsg : m)));
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleVoiceInput = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert("Voice input is not supported in this browser. Please use Chrome, Safari, or Edge.");
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-IN';
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onresult = (e) => {
+        const transcript = e.results[0][0].transcript;
+        if (transcript) {
+          setInput((prev) => (prev ? `${prev} ${transcript}` : transcript));
+        }
+      };
+      recognition.onerror = () => setIsListening(false);
+      recognition.onend = () => setIsListening(false);
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      setIsListening(false);
+    }
+  };
+
+  const handleExportThread = () => {
+    if (!messages || messages.length === 0) return;
+    const currentThread = threads.find((t) => t.id === activeThreadId);
+    const title = currentThread?.title || 'Bharti.ai Conversation';
+    const header = `# ${title}\n*Official Campus Assistant — Bharati Vidyapeeth*\n*Exported: ${new Date().toLocaleString()}*\n\n---\n\n`;
+    const body = messages
+      .map((m) => `### ${m.role === 'user' ? 'Student' : 'Bharti.ai Assistant'}\n\n${m.content}\n\n`)
+      .join('---\n\n');
+    const blob = new Blob([header + body], { type: 'text/markdown;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${title.replace(/[^a-zA-Z0-9_-]/g, '_')}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const getFollowUpSuggestions = (content) => {
+    if (!content || content.includes("I'm sorry, but I don't have") || content.includes("cannot answer questions outside")) {
+      return [];
+    }
+    const c = content.toLowerCase();
+    if (c.includes('datesheet') || c.includes('exam') || c.includes('schedule') || c.includes('timetable')) {
+      return [
+        "What are the reporting times & hall entry rules?",
+        "Are scientific calculators allowed?",
+        "Show exam instructions and passing criteria"
+      ];
+    }
+    if (c.includes('fee') || c.includes('tuition') || c.includes('hostel')) {
+      return [
+        "What is the fee payment deadline?",
+        "Are there installment payment options?",
+        "What are the hostel and mess charges?"
+      ];
+    }
+    if (c.includes('syllabus') || c.includes('course') || c.includes('credits')) {
+      return [
+        "What are the recommended reference textbooks?",
+        "What is the internal assessment marking scheme?",
+        "Show upcoming semester examination schedule"
+      ];
+    }
+    if (c.includes('admission') || c.includes('eligibility')) {
+      return [
+        "What original documents are needed for admission?",
+        "What are the course fee details?",
+        "How do I contact the admissions department?"
+      ];
+    }
+    return [
+      "Can you summarize this in bullet points?",
+      "Who can I contact for administrative verification?"
+    ];
   };
 
   const handleDeleteThread = (threadId, e) => {
@@ -474,28 +627,58 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
       </aside>
 
       {/* Main Chat Workspace */}
-      <section className="flex-1 flex flex-col h-full overflow-hidden bg-white relative">
-        {/* Mobile Sub-Header: Thread Name & Hamburger */}
-        <div className="sm:hidden h-11 px-3 border-b border-zinc-100 flex items-center justify-between bg-white shrink-0">
+      <section className="flex-1 flex flex-col h-full overflow-hidden bg-white dark:bg-zinc-900 relative">
+        {/* Mobile Sub-Header: Thread Name & Actions */}
+        <div className="sm:hidden h-11 px-3 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-white dark:bg-zinc-900 shrink-0">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-1.5 -ml-1 text-zinc-600 hover:text-zinc-900 rounded-lg hover:bg-zinc-100 flex items-center gap-1.5 text-xs font-medium"
+            className="p-1.5 -ml-1 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1.5 text-xs font-medium"
           >
             <Menu className="w-4 h-4" />
             <span>Chats</span>
           </button>
 
-          <span className="text-xs font-medium text-zinc-800 truncate max-w-[180px]">
+          <span className="text-xs font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-[150px]">
             {threads.find((t) => t.id === activeThreadId)?.title || 'New Chat'}
           </span>
 
-          <button
-            onClick={handleStartNewChat}
-            className="p-1.5 text-zinc-600 hover:text-zinc-900 rounded-lg hover:bg-zinc-100"
-            title="Start new chat"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {messages.length > 0 && (
+              <button
+                onClick={handleExportThread}
+                className="p-1.5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                title="Export conversation"
+              >
+                <FileDown className="w-4 h-4" />
+              </button>
+            )}
+            <button
+              onClick={handleStartNewChat}
+              className="p-1.5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              title="Start new chat"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Desktop Sub-Header: Title & Export Action */}
+        <div className="hidden sm:flex h-11 px-6 border-b border-zinc-100 dark:border-zinc-800 items-center justify-between bg-white/80 dark:bg-zinc-900/80 backdrop-blur-xs shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200 truncate max-w-[320px]">
+              {threads.find((t) => t.id === activeThreadId)?.title || 'New Consultation'}
+            </span>
+          </div>
+          {messages.length > 0 && (
+            <button
+              onClick={handleExportThread}
+              className="px-2.5 py-1 text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-1.5 transition-colors border border-zinc-200/60 dark:border-zinc-700/80 shadow-2xs"
+              title="Download conversation as Markdown file"
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              <span>Export Chat</span>
+            </button>
+          )}
         </div>
 
         {/* Messages Scroll Area */}
@@ -608,6 +791,27 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                             </>
                           )}
                         </button>
+                      </div>
+                    )}
+
+                    {/* Dynamic Follow-Up Suggestions for the latest answer */}
+                    {!isUser && index === messages.length - 1 && !loading && msg.content && (
+                      <div className="mt-3.5 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-2 block">
+                          Suggested Questions
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {getFollowUpSuggestions(msg.content).map((suggestion, sIdx) => (
+                            <button
+                              key={sIdx}
+                              onClick={() => handleSend(suggestion)}
+                              className="text-left px-3 py-1.5 rounded-xl text-xs bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700/80 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition-all flex items-center gap-1.5 shadow-2xs hover:shadow-xs group"
+                            >
+                              <span className="group-hover:text-zinc-950 dark:group-hover:text-white">{suggestion}</span>
+                              <ChevronRight className="w-3 h-3 text-zinc-400 group-hover:translate-x-0.5 transition-transform" />
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -737,19 +941,35 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                   )}
                 </div>
 
-                {/* Right: Send Button */}
-                <button
-                  onClick={() => handleSend()}
-                  disabled={!input.trim() || loading}
-                  className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
-                    input.trim() && !loading
-                      ? 'bg-zinc-900 text-white hover:bg-zinc-800 shadow-xs'
-                      : 'bg-zinc-100 text-zinc-400 cursor-not-allowed'
-                  }`}
-                  aria-label="Send query"
-                >
-                  <ArrowUp className="w-4 h-4 stroke-[2.5]" />
-                </button>
+                {/* Right: Actions (Voice + Send) */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={toggleVoiceInput}
+                    type="button"
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+                      isListening
+                        ? 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 animate-pulse'
+                        : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                    }`}
+                    title={isListening ? "Listening... click to stop" : "Voice input (Speech to text)"}
+                    aria-label="Voice input"
+                  >
+                    {isListening ? <MicOff className="w-4 h-4 text-red-600" /> : <Mic className="w-4 h-4" />}
+                  </button>
+
+                  <button
+                    onClick={() => handleSend()}
+                    disabled={!input.trim() || loading}
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+                      input.trim() && !loading
+                        ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:bg-zinc-800 shadow-xs'
+                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed'
+                    }`}
+                    aria-label="Send query"
+                  >
+                    <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -865,21 +1085,47 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
             </div>
 
             {/* Filter Search */}
-            <div className="p-4 border-b border-zinc-100 bg-white">
+            <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 space-y-2.5">
               <div className="relative">
                 <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
                 <input
                   type="text"
-                  placeholder="Filter notices (e.g. datesheet, fees, holiday)..."
+                  placeholder="Search notices by keyword, title, subject..."
                   value={noticeSearch}
                   onChange={(e) => setNoticeSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs border border-zinc-200 rounded-lg focus:outline-none focus:border-zinc-400"
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg focus:outline-none focus:border-zinc-400 text-zinc-900 dark:text-zinc-100"
                 />
+              </div>
+
+              {/* Category & Semester Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'datesheet', label: 'Datesheets' },
+                  { id: 'fee', label: 'Fees' },
+                  { id: 'syllabus', label: 'Syllabus' },
+                  { id: 'admissions', label: 'Admissions' },
+                  { id: 'sem 1', label: 'Sem 1' },
+                  { id: 'sem 3', label: 'Sem 3' },
+                  { id: 'sem 5', label: 'Sem 5' },
+                ].map((pill) => (
+                  <button
+                    key={pill.id}
+                    onClick={() => setNoticeCategoryFilter(pill.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${
+                      noticeCategoryFilter === pill.id
+                        ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-2xs'
+                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/70 border border-zinc-200/60 dark:border-zinc-700'
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
               </div>
             </div>
 
             {/* Notices List */}
-            <div className="p-5 space-y-3 overflow-y-auto no-scrollbar flex-1">
+            <div className="p-5 space-y-3 overflow-y-auto no-scrollbar flex-1 bg-white dark:bg-zinc-900">
               {noticesLoading ? (
                 <div className="py-8 text-center text-xs text-zinc-400">Loading notices...</div>
               ) : notices.length === 0 ? (
@@ -889,11 +1135,20 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                 </div>
               ) : (
                 notices
-                  .filter((n) =>
-                    n.title.toLowerCase().includes(noticeSearch.toLowerCase()) ||
-                    (n.subject && n.subject.toLowerCase().includes(noticeSearch.toLowerCase())) ||
-                    (n.department && n.department.toLowerCase().includes(noticeSearch.toLowerCase()))
-                  )
+                  .filter((n) => {
+                    const term = noticeSearch.toLowerCase();
+                    const matchesSearch =
+                      !term ||
+                      n.title.toLowerCase().includes(term) ||
+                      (n.subject && n.subject.toLowerCase().includes(term)) ||
+                      (n.department && n.department.toLowerCase().includes(term));
+
+                    if (!matchesSearch) return false;
+                    if (noticeCategoryFilter === 'all') return true;
+                    const cat = noticeCategoryFilter.toLowerCase();
+                    const docStr = `${n.title} ${n.document_type || ''} ${n.subject || ''} ${n.department || ''} sem ${n.semester || ''}`.toLowerCase();
+                    return docStr.includes(cat);
+                  })
                   .map((notice) => (
                     <div
                       key={notice.id}

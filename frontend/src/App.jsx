@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import StudentChat from './components/StudentChat';
 import AdminPanel from './components/AdminPanel';
-import { Shield, MessageSquare, Settings as SettingsIcon, X, LogIn, LogOut, CheckCircle2, AlertCircle, Info, Trash2, Bell } from 'lucide-react';
+import { Shield, MessageSquare, Settings as SettingsIcon, X, LogIn, LogOut, CheckCircle2, AlertCircle, Info, Trash2, Bell, Sun, Moon } from 'lucide-react';
 
 const parseJwt = (token) => {
   try {
@@ -22,6 +22,7 @@ const parseJwt = (token) => {
 export default function App() {
   const [adminToken, setAdminToken] = useState(() => localStorage.getItem('camp_ai_admin_token') || null);
   const [adminEmail, setAdminEmail] = useState('');
+  const [theme, setTheme] = useState(() => localStorage.getItem('camp_ai_theme') || 'light');
   const [view, setView] = useState(() => {
     const saved = localStorage.getItem('camp_ai_view');
     const token = localStorage.getItem('camp_ai_admin_token');
@@ -31,6 +32,20 @@ export default function App() {
   const [config, setConfig] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [noticesOpen, setNoticesOpen] = useState(false);
+
+  // Sync theme with html root class
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('camp_ai_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
 
   // Admin login form inside Settings
   const [loginEmail, setLoginEmail] = useState('admin@college.edu');
@@ -138,12 +153,12 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-[#fafafa] overflow-hidden font-sans text-zinc-900 select-none sm:select-auto">
+    <div className="flex flex-col h-[100dvh] bg-[#fafafa] dark:bg-zinc-950 overflow-hidden font-sans text-zinc-900 dark:text-zinc-100 select-none sm:select-auto transition-colors">
       {/* Minimalist Top Navigation Header */}
-      <header className="h-14 sm:h-16 shrink-0 bg-white/95 backdrop-blur-md border-b border-zinc-200/80 z-40 px-3 sm:px-6 flex items-center justify-between transition-colors">
+      <header className="h-14 sm:h-16 shrink-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800 z-40 px-3 sm:px-6 flex items-center justify-between transition-colors">
         {/* College Brand Block */}
         <div className="flex items-center gap-2.5 sm:gap-3">
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-zinc-100 border border-zinc-200/90 flex items-center justify-center p-1 overflow-hidden shrink-0 shadow-xs">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/90 dark:border-zinc-700 flex items-center justify-center p-1 overflow-hidden shrink-0 shadow-xs">
             <img
               src={config?.logo_url || '/logo.png'}
               alt="Bharti.ai"
@@ -154,13 +169,13 @@ export default function App() {
             />
           </div>
           <div>
-            <h1 className="font-semibold text-zinc-900 text-sm sm:text-base tracking-tight leading-none">
+            <h1 className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm sm:text-base tracking-tight leading-none">
               {config?.college_name || 'Bharti.ai'}
             </h1>
-            <p className="text-[11px] text-zinc-500 leading-tight mt-1 flex items-center">
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-tight mt-1 flex items-center">
               {view === 'admin' ? (
                 <>
-                  <Shield className="w-3 h-3 text-zinc-500 mr-1 shrink-0" />
+                  <Shield className="w-3 h-3 text-zinc-500 dark:text-zinc-400 mr-1 shrink-0" />
                   <span>Administrator Control Panel</span>
                 </>
               ) : (
@@ -172,13 +187,23 @@ export default function App() {
 
         {/* Header Right Actions */}
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Dark / Light Mode Toggle */}
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-lg text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-800 transition-all min-h-[36px] min-w-[36px] flex items-center justify-center shadow-xs"
+            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            aria-label="Toggle Theme"
+          >
+            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-zinc-600" />}
+          </button>
+
           {/* Notice Board Button */}
           <button
             onClick={() => setNoticesOpen(true)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-700 bg-zinc-100 hover:bg-zinc-200/80 border border-zinc-200/60 flex items-center gap-1.5 transition-all shadow-xs min-h-[36px]"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200/80 dark:hover:bg-zinc-700 border border-zinc-200/60 dark:border-zinc-700 flex items-center gap-1.5 transition-all shadow-xs min-h-[36px]"
             title="View College Notices & Circulars"
           >
-            <Bell className="w-3.5 h-3.5 text-zinc-600" />
+            <Bell className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
             <span className="hidden sm:inline">Notice Board</span>
           </button>
 
@@ -188,8 +213,8 @@ export default function App() {
               onClick={toggleView}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all shadow-xs min-h-[36px] ${
                 view === 'admin'
-                  ? 'bg-zinc-900 text-white hover:bg-zinc-800'
-                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
+                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:bg-zinc-800'
+                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 hover:bg-emerald-100'
               }`}
               title={view === 'admin' ? 'Back to Student Chat' : 'Open Admin Panel'}
             >
@@ -200,7 +225,7 @@ export default function App() {
                 </>
               ) : (
                 <>
-                  <Shield className="w-3.5 h-3.5 text-emerald-600" />
+                  <Shield className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span className="hidden sm:inline">Admin Panel</span>
                 </>
               )}
@@ -210,7 +235,7 @@ export default function App() {
           {/* Settings Button */}
           <button
             onClick={() => setSettingsOpen(true)}
-            className="p-2 rounded-lg text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 border border-transparent hover:border-zinc-200 transition-all min-h-[36px] min-w-[36px] flex items-center justify-center"
+            className="p-2 rounded-lg text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700 transition-all min-h-[36px] min-w-[36px] flex items-center justify-center"
             title="Settings & Admin Access"
             aria-label="Settings"
           >
@@ -222,7 +247,7 @@ export default function App() {
       {/* Main Content Area */}
       <main className="flex-1 relative overflow-hidden flex flex-col">
         {view === 'admin' && adminToken ? (
-          <AdminPanel token={adminToken} onSwitchToChat={() => setView('student')} />
+          <AdminPanel token={adminToken} onSwitchToChat={() => setView('student')} theme={theme} />
         ) : (
           <StudentChat
             adminToken={adminToken}
@@ -230,6 +255,7 @@ export default function App() {
             noticesOpen={noticesOpen}
             setNoticesOpen={setNoticesOpen}
             onOpenSettings={() => setSettingsOpen(true)}
+            theme={theme}
           />
         )}
       </main>

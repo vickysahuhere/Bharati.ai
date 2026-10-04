@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
 import json
 
 from app.db.session import pool
 from app.api.auth import get_current_user, get_optional_user, UserResponse
-from app.generation.pipeline import generate_answer
+from app.generation.pipeline import generate_answer, generate_answer_stream
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -47,6 +48,39 @@ def direct_chat_query(
         "sources": result["sources"],
         "found": result.get("found", True)
     }
+
+@router.post("/stream")
+def direct_chat_stream(
+    req: MessageRequest,
+    current_user: Optional[UserResponse] = Depends(get_optional_user)
+):
+    """
+    Real-time Server-Sent Events (SSE) streaming endpoint for instantaneous token delivery.
+    """
+    def event_generator():
+        try:
+            for event in generate_answer_stream(
+                query=req.query,
+                knowledge_domain=req.knowledge_domain,
+                department=req.department,
+                semester=req.semester,
+                subject=req.subject,
+                chat_history=req.chat_history
+            ):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'token', 'token': f' Error: {str(e)}'})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 @router.post("/sessions", response_model=SessionResponse)
 def create_chat_session(current_user: Optional[UserResponse] = Depends(get_optional_user)):

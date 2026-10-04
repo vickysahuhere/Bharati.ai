@@ -28,6 +28,32 @@ class GroqLLM:
             r.raise_for_status()
             return r.json()["choices"][0]["message"]["content"]
 
+    def generate_stream(self, messages: list[dict], temperature: float = 0.1):
+        import json
+        with httpx.stream(
+            "POST",
+            self.URL,
+            headers={"Authorization": f"Bearer {self.api_key}"},
+            json={"model": self.model, "messages": messages, "temperature": temperature, "stream": True},
+            timeout=60,
+        ) as r:
+            r.raise_for_status()
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                if line.startswith("data: "):
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk_json = json.loads(data_str)
+                        delta = chunk_json["choices"][0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except Exception:
+                        continue
+
 
 class FastEmbedder:
     """Local CPU embeddings: free, no rate limits, college text never leaves the box."""
