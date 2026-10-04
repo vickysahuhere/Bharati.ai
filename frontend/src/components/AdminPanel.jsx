@@ -78,6 +78,18 @@ export default function AdminPanel({ token, onSwitchToChat }) {
     if (activeTab === 'unresolved') fetchUnresolvedQueries();
   }, [activeTab]);
 
+  // Auto-poll document status when any document is currently in 'processing' state
+  useEffect(() => {
+    const hasProcessing = documents.some(d => d.status === 'processing');
+    if (!hasProcessing) return;
+
+    const interval = setInterval(() => {
+      fetchDocuments();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [documents]);
+
   // Keyboard shortcut: Escape closes modals
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -373,8 +385,8 @@ export default function AdminPanel({ token, onSwitchToChat }) {
       });
 
       if (res.ok) {
-        setMessage('Document uploaded & indexed successfully into semantic vector chunks!');
-        setMessageType('success');
+        setMessage('Document uploaded! Background worker is segmenting and indexing vector chunks...');
+        setMessageType('info');
         clearForm();
         fetchDocuments();
       } else {
@@ -399,8 +411,8 @@ export default function AdminPanel({ token, onSwitchToChat }) {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
-        setMessage('Document successfully re-indexed with fresh vector embeddings!');
-        setMessageType('success');
+        setMessage('Re-indexing job queued! Background worker is generating fresh vector embeddings...');
+        setMessageType('info');
         fetchDocuments();
       } else {
         const err = await res.json();

@@ -68,7 +68,8 @@ def get_embed_model():
     global embedding_model
     if embedding_model is None:
         model_name = get_settings().embedding_model
-        embedding_model = TextEmbedding(model_name=model_name)
+        # Enforce threads=1 to prevent CPU starvation and keep memory < 50MB on 512MB RAM
+        embedding_model = TextEmbedding(model_name=model_name, threads=1)
     return embedding_model
 
 storage = StorageProvider()
@@ -390,7 +391,13 @@ def ingest_version(payload: dict):
             all_doc_semesters = set()
             
             if valid_chunks:
-                embeddings = list(model.embed([c["content"] for c in valid_chunks]))
+                # Batch embeddings in groups of 16 to keep memory footprint minimal (<50MB)
+                BATCH_SIZE = 16
+                embeddings = []
+                for b_start in range(0, len(valid_chunks), BATCH_SIZE):
+                    b_end = b_start + BATCH_SIZE
+                    b_texts = [c["content"] for c in valid_chunks[b_start:b_end]]
+                    embeddings.extend(list(model.embed(b_texts)))
                 
                 insert_data = []
                 for idx, (chunk_dict, embedding) in enumerate(zip(valid_chunks, embeddings)):
@@ -454,9 +461,9 @@ def ingest_version(payload: dict):
                     (single_sem, doc_id)
                 )
 
-            # Mark success
+            # Mark success (keep file_data in DB so re-indexing works across ephemeral restarts)
             conn.execute(
-                "UPDATE document_versions SET status='indexed', is_active=true, error=NULL, file_data=NULL WHERE id=%s",
+                "UPDATE document_versions SET status='indexed', is_active=true, error=NULL WHERE id=%s",
                 (ver_id,)
             )
             # Purge temporary file from local disk to prevent storage bloat

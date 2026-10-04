@@ -80,17 +80,12 @@ def upload_document(
                 (payload,)
             )
 
-    # Immediately trigger ingestion for instant indexing
-    final_status = "uploaded"
-    try:
-        from worker.ingestion import ingest_version
-        ingest_version({"document_id": str(doc_id), "version_id": str(ver_id)})
-        final_status = "indexed"
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Immediate ingestion deferred to background worker: {e}")
-            
-    return {"status": final_status, "document_id": str(doc_id), "version_id": str(ver_id)}
+    return {
+        "status": "processing", 
+        "document_id": str(doc_id), 
+        "version_id": str(ver_id),
+        "message": "Document uploaded and queued for background indexing."
+    }
 
 
 @router.get("/public/notices")
@@ -174,33 +169,37 @@ def reindex_document(doc_id: str, admin: UserResponse = Depends(get_admin_user))
             raise HTTPException(status_code=404, detail="Document version not found")
         ver_id = str(ver[0])
         
-    from worker.ingestion import ingest_version
-    try:
-        ingest_version({"document_id": doc_id, "version_id": ver_id})
-        return {"status": "indexed", "document_id": doc_id, "version_id": ver_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}")
+        # Mark version as processing
+        conn.execute("UPDATE document_versions SET status='processing', error=NULL WHERE id=%s", (ver_id,))
+        
+        # Queue ingestion job for background worker
+        payload = json.dumps({"document_id": str(doc_id), "version_id": str(ver_id)})
+        conn.execute(
+            "INSERT INTO jobs (kind, payload) VALUES ('ingest_version', %s)",
+            (payload,)
+        )
+        
+    return {
+        "status": "processing", 
+        "document_id": doc_id, 
+        "version_id": ver_id,
+        "message": "Re-indexing queued for background processing."
+    }
 
 @router.post("/process-queue")
 def process_queue(admin: UserResponse = Depends(get_admin_user)):
-    """Claims and runs all pending queued jobs immediately."""
-    from worker.main import CLAIM, HANDLERS
-    processed = 0
-    errors = []
+    """Verifies queued jobs and resets any stuck jobs so the background worker can process them."""
     with pool().connection() as conn:
-        while True:
-            row = conn.execute(CLAIM).fetchone()
-            if not row:
-                break
-            job_id, kind, payload = row
-            try:
-                HANDLERS[kind](payload)
-                conn.execute("UPDATE jobs SET status='done', last_error=NULL WHERE id=%s", (job_id,))
-                processed += 1
-            except Exception as e:
-                conn.execute("UPDATE jobs SET status='failed', last_error=%s WHERE id=%s", (str(e), job_id))
-                errors.append(f"Job {job_id} error: {e}")
-    return {"processed": processed, "errors": errors}
+        # Reset any jobs stuck in running state for > 5 minutes
+        conn.execute(
+            "UPDATE jobs SET status='queued', locked_at=NULL, last_error='Reset by admin' WHERE status='running' AND locked_at < now() - interval '5 minutes'"
+        )
+        queued_count = conn.execute("SELECT COUNT(*) FROM jobs WHERE status='queued'").fetchone()[0]
+    return {
+        "status": "ok", 
+        "queued": queued_count, 
+        "message": f"{queued_count} job(s) in queue. The background worker is processing them."
+    }
 
 @router.delete("/admin/purge-all")
 def purge_all_documents(admin: UserResponse = Depends(get_admin_user)):

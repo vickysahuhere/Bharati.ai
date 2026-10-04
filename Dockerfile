@@ -11,6 +11,9 @@ WORKDIR /srv
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-cache lightweight 384-dim embedding model during build so no download occurs at runtime
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5', threads=1)"
+
 # Copy backend application source
 COPY backend/ /srv/
 
