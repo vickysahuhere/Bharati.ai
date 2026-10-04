@@ -268,29 +268,10 @@ def extract_and_chunk(file_path: str, mime_type: str, chunk_size: int = 500, ove
         page = doc[page_num]
         actual_page_num = page_num + 1
         
-        text = page.get_text()
-        if len(text.strip()) < 50:
-            import pytesseract
-            from PIL import Image
-            page_text = ""
-            for img_info in page.get_images(full=True):
-                xref = img_info[0]
-                base_image = doc.extract_image(xref)
-                image_bytes = base_image["image"]
-                import io
-                img = Image.open(io.BytesIO(image_bytes))
-                page_text += pytesseract.image_to_string(img, lang='eng+hin') + "\n"
-            blocks = [{"text": page_text.strip()}]
-        else:
-            raw_blocks = page.get_text("blocks")
-            # Sort top to bottom, left to right
-            raw_blocks.sort(key=lambda b: (b[1], b[0]))
-            blocks = [{"text": b[4].strip()} for b in raw_blocks if b[6] == 0 and b[4].strip()]
-            
-        if not blocks:
-            continue
+        # Priority 1: Extract direct text from PyMuPDF
+        direct_text = page.get_text().strip()
 
-        # Extract structured Markdown tables if PyMuPDF table detection is available
+        # Priority 2: Extract structured Markdown tables if PyMuPDF table detection is available
         table_md_blocks = []
         if hasattr(page, "find_tables"):
             try:
@@ -312,17 +293,41 @@ def extract_and_chunk(file_path: str, mime_type: str, chunk_size: int = 500, ove
                                 table_md_blocks.append("\n".join(md_lines))
             except Exception as e:
                 logger.debug(f"Table detection skipped or not supported on page {actual_page_num}: {e}")
-            
-        page_lines = [line.strip() for b in blocks for line in b["text"].split("\n") if line.strip()]
-        page_section = detect_section_title(page_lines, actual_page_num)
-        page_full_text = "\n\n".join(b["text"] for b in blocks)
+
+        # Priority 3: If direct text is very sparse (< 50 chars), render page to image and run OCR
+        ocr_text = ""
+        if len(direct_text) < 50:
+            try:
+                import pytesseract
+                from PIL import Image
+                import io
+                # Render visual page pixmap (handles scanned pages, vector drawings, full page scans)
+                pix = page.get_pixmap(dpi=150)
+                img = Image.open(io.BytesIO(pix.tobytes("png")))
+                try:
+                    ocr_text = pytesseract.image_to_string(img, lang='eng+hin').strip()
+                except Exception:
+                    ocr_text = pytesseract.image_to_string(img, lang='eng').strip()
+            except Exception as e:
+                logger.warning(f"OCR skipped on page {actual_page_num}: {e}")
+
+        # Combine direct text and OCR text (never discard direct text!)
+        page_parts = []
+        if direct_text:
+            page_parts.append(direct_text)
+        if ocr_text and ocr_text not in direct_text:
+            page_parts.append(ocr_text)
         if table_md_blocks:
-            page_full_text = page_full_text + "\n\n### Official Schedule Tables:\n" + "\n\n".join(table_md_blocks)
+            page_parts.append("### Official Schedule Tables:\n" + "\n\n".join(table_md_blocks))
+
+        page_full_text = "\n\n".join(p for p in page_parts if p.strip()).strip()
+        if not page_full_text:
+            continue
+
+        page_lines = [line.strip() for line in page_full_text.split("\n") if line.strip()]
+        page_section = detect_section_title(page_lines, actual_page_num)
         page_words = page_full_text.split()
         
-        if not page_words:
-            continue
-            
         # Treat each page as a semantic container:
         # If the page fits within chunk_size (+ margin), keep it intact as a complete chunk!
         if len(page_words) <= chunk_size + 60:
@@ -387,6 +392,9 @@ def ingest_version(payload: dict):
             model_name = get_settings().embedding_model
             
             valid_chunks = [c for c in chunks if c["content"].strip()]
+            if not valid_chunks:
+                raise ValueError("No text or tables could be extracted from this document. Please verify the document has readable text or OCR content.")
+
             all_doc_dates = []
             all_doc_semesters = set()
             
