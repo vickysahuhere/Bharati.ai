@@ -288,10 +288,35 @@ def extract_and_chunk(file_path: str, mime_type: str, chunk_size: int = 500, ove
             
         if not blocks:
             continue
+
+        # Extract structured Markdown tables if PyMuPDF table detection is available
+        table_md_blocks = []
+        if hasattr(page, "find_tables"):
+            try:
+                tabs = page.find_tables()
+                if tabs and getattr(tabs, "tables", None):
+                    for tab in tabs.tables:
+                        df_rows = tab.extract()
+                        if df_rows and len(df_rows) >= 2:
+                            header = [str(c or "").replace("\n", " ").strip() for c in df_rows[0]]
+                            if any(header):
+                                md_lines = [
+                                    "| " + " | ".join(header) + " |",
+                                    "| " + " | ".join(["---"] * len(header)) + " |"
+                                ]
+                                for row in df_rows[1:]:
+                                    clean_cells = [str(c or "").replace("\n", " ").strip() for c in row]
+                                    if any(clean_cells):
+                                        md_lines.append("| " + " | ".join(clean_cells) + " |")
+                                table_md_blocks.append("\n".join(md_lines))
+            except Exception as e:
+                logger.debug(f"Table detection skipped or not supported on page {actual_page_num}: {e}")
             
         page_lines = [line.strip() for b in blocks for line in b["text"].split("\n") if line.strip()]
         page_section = detect_section_title(page_lines, actual_page_num)
         page_full_text = "\n\n".join(b["text"] for b in blocks)
+        if table_md_blocks:
+            page_full_text = page_full_text + "\n\n### Official Schedule Tables:\n" + "\n\n".join(table_md_blocks)
         page_words = page_full_text.split()
         
         if not page_words:

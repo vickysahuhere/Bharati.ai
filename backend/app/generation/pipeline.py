@@ -125,7 +125,7 @@ Keep the greeting friendly, concise, and helpful."""
             except Exception:
                 pass
         return {
-            "answer": "Hello! 👋 I am Bharti.ai, the official assistant for Bharati Vidyapeeth University. How can I help you today with admissions, exam datesheets, syllabus, or fee structures?",
+            "answer": "Hello! I am Bharti.ai, the official assistant for Bharati Vidyapeeth University. How can I help you today with admissions, exam datesheets, syllabus, or fee structures?",
             "sources": [],
             "found": True
         }

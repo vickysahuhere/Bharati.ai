@@ -157,8 +157,15 @@ export default function App() {
             <h1 className="font-semibold text-zinc-900 text-sm sm:text-base tracking-tight leading-none">
               {config?.college_name || 'Bharti.ai'}
             </h1>
-            <p className="text-[11px] text-zinc-500 leading-tight mt-1">
-              {view === 'admin' ? '🛡️ Administrator Control Panel' : 'Official Student & Campus Assistant'}
+            <p className="text-[11px] text-zinc-500 leading-tight mt-1 flex items-center">
+              {view === 'admin' ? (
+                <>
+                  <Shield className="w-3 h-3 text-zinc-500 mr-1 shrink-0" />
+                  <span>Administrator Control Panel</span>
+                </>
+              ) : (
+                'Official Student & Campus Assistant'
+              )}
             </p>
           </div>
         </div>

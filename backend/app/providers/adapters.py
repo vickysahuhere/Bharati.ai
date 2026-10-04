@@ -65,19 +65,30 @@ class LocalStorage:
 class CrossEncoderReranker:
     """Lightweight, low-memory query-text ranker for 512MB RAM cloud environments."""
 
+    STOP_WORDS = {
+        'the', 'a', 'an', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of', 'with',
+        'by', 'is', 'are', 'was', 'were', 'what', 'whats', 'show', 'me', 'please',
+        'tell', 'about', 'i', 'my', 'can', 'you', 'give', 'detail', 'details'
+    }
+
     def __init__(self, model_name: str = ""):
         self.model_name = model_name
 
     def rerank(self, query: str, texts: list[str]) -> list[float]:
         if not texts:
             return []
-        q_tokens = set(query.lower().split())
+        import re
+        tokens = [w for w in re.findall(r'[a-zA-Z0-9]+', query.lower())]
+        q_tokens = {w for w in tokens if w not in self.STOP_WORDS}
+        if not q_tokens:
+            q_tokens = set(tokens)
+            
         scores = []
         for text in texts:
             if not text:
                 scores.append(0.0)
                 continue
-            t_tokens = set(text.lower().split())
+            t_tokens = set(re.findall(r'[a-zA-Z0-9]+', text.lower()))
             overlap = len(q_tokens & t_tokens) / max(len(q_tokens), 1)
             scores.append(float(overlap))
         return scores

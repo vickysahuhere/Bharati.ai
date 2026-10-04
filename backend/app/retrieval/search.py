@@ -173,7 +173,7 @@ def hybrid_search(
     # A chunk must have an actual text match (fts_score > 0) OR a genuine vector similarity (vec_score >= 0.30)
     filtered = [c for c in sorted_chunks if c.get("fts_score", 0) > 0 or c.get("vec_score", 0) >= 0.30]
     
-    # RERANKING
+    # RERANKING & SCORING
     if filtered:
         try:
             from app.providers.registry import get_reranker
@@ -183,10 +183,78 @@ def hybrid_search(
             
             for c, s in zip(filtered, scores):
                 c["rerank_score"] = s
+                # Balance vector/FTS rank with keyword precision so vector relevance is not discarded
+                c["final_score"] = (c.get("rrf_score", 0.0) * 10.0) + (s * 0.8)
                 
-            filtered.sort(key=lambda x: x["rerank_score"], reverse=True)
+            filtered.sort(key=lambda x: x.get("final_score", 0.0), reverse=True)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Reranking failed: {e}")
-    
+
+    # SIBLING CHUNK EXPANSION:
+    # If the user is querying datesheet, timetable, schedule, syllabus, or multiple semesters,
+    # and the top result belongs to an official circular, include its sibling chunks
+    # so all semesters (Sem 1, 3, 5) and tables in that document are provided in full!
+    if filtered:
+        top_version_id = filtered[0]["version_id"]
+        q_lower = query.lower()
+        needs_full_doc = any(kw in q_lower for kw in [
+            'datesheet', 'date sheet', 'timetable', 'schedule', 'exam', 
+            'semester', 'sem', 'all', 'routine', 'syllabus', 'fee', 'structure'
+        ])
+        
+        if needs_full_doc:
+            with pool().connection() as conn:
+                try:
+                    sibling_rows = conn.execute(
+                        """
+                        SELECT 
+                            c.id, c.document_id, c.version_id, c.chunk_index, c.content, c.page, c.section, c.metadata,
+                            d.title, d.knowledge_domain, d.source_url,
+                            d.department, d.semester, d.subject, d.document_type,
+                            dv.effective_date, dv.expiration_date
+                        FROM chunks c
+                        JOIN document_versions dv ON c.version_id = dv.id
+                        JOIN documents d ON c.document_id = d.id
+                        WHERE c.version_id = %s
+                        ORDER BY c.page ASC, c.chunk_index ASC
+                        LIMIT 10
+                        """,
+                        (top_version_id,)
+                    ).fetchall()
+
+                    existing_ids = {c["id"] for c in filtered}
+                    for row in sibling_rows:
+                        cid = row[0]
+                        if cid not in existing_ids:
+                            filtered.append({
+                                "id": cid,
+                                "document_id": str(row[1]),
+                                "version_id": str(row[2]),
+                                "chunk_index": row[3],
+                                "content": row[4],
+                                "page": row[5],
+                                "section": row[6],
+                                "metadata": row[7] if isinstance(row[7], dict) else {},
+                                "title": row[8],
+                                "domain": row[9],
+                                "source_url": row[10],
+                                "department": row[11],
+                                "semester": row[12],
+                                "subject": row[13],
+                                "document_type": row[14],
+                                "effective_date": row[15].isoformat() if row[15] else None,
+                                "expiration_date": row[16].isoformat() if row[16] else None,
+                                "vec_score": 1.0,
+                                "fts_score": 1.0,
+                                "rrf_score": 1.0,
+                                "rerank_score": 1.0,
+                                "final_score": 1.0
+                            })
+                            existing_ids.add(cid)
+                    return filtered[:10]
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Sibling expansion failed: {e}")
+
     return filtered[:top_k]

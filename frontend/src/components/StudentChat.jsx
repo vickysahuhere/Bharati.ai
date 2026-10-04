@@ -3,7 +3,7 @@ import {
   Send, Plus, MessageSquare, ThumbsUp, ThumbsDown, BookOpen, 
   Bell, Sparkles, X, Edit2, Check, Menu, Tag, Search, Copy, 
   ExternalLink, Trash2, ArrowUp, ChevronRight, FileText, Calendar, 
-  HelpCircle, Clock, ChevronDown, CheckCircle2 
+  CreditCard, HelpCircle, Clock, ChevronDown, CheckCircle2 
 } from 'lucide-react';
 import FormattedMessage from './FormattedMessage';
 import { CAMPUS_KEYWORDS } from '../config/keywords';
@@ -308,22 +308,26 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
 
   const quickPrompts = [
     {
-      title: "📅 Examination Datesheets",
+      icon: Calendar,
+      title: "Examination Datesheets",
       desc: "Exam timetable for B.Tech Semester 1, 3, and 5",
       prompt: "Show me the examination schedule and datesheet for B.Tech Semester 1, 3, and 5.",
     },
     {
-      title: "💰 Tuition & Hostel Fees",
+      icon: CreditCard,
+      title: "Tuition & Hostel Fees",
       desc: "Annual course fee structure and payment deadlines",
       prompt: "What is the complete fee structure, tuition, and hostel charges?",
     },
     {
-      title: "📚 Syllabus & Course Units",
+      icon: BookOpen,
+      title: "Syllabus & Course Units",
       desc: "Curriculum, subjects, and credits for engineering/IT",
       prompt: "What is the detailed syllabus and course modules for B.Tech Computer Science?",
     },
     {
-      title: "📋 Admissions & Regulations",
+      icon: FileText,
+      title: "Admissions & Regulations",
       desc: "Eligibility criteria, required documents, and guidelines",
       prompt: "What are the admission rules, eligibility criteria, and documents required?",
     },
@@ -517,17 +521,20 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                     <button
                       key={idx}
                       onClick={() => handleSend(card.prompt)}
-                      className="p-3.5 rounded-xl border border-zinc-200/80 bg-white hover:border-zinc-300 hover:bg-zinc-50/70 hover:shadow-sm transition-all group flex flex-col justify-between"
+                      className="p-3.5 rounded-xl border border-zinc-200/80 bg-white hover:border-zinc-300 hover:bg-zinc-50/70 hover:shadow-xs transition-all group flex flex-col justify-between"
                     >
                       <div>
-                        <span className="text-xs font-medium text-zinc-900 group-hover:text-zinc-950 block">
+                        <div className="w-7 h-7 rounded-lg bg-zinc-100 border border-zinc-200/70 flex items-center justify-center text-zinc-700 mb-2.5 group-hover:bg-zinc-200/80 group-hover:text-zinc-900 transition-colors">
+                          <card.icon className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="text-xs font-semibold text-zinc-900 group-hover:text-zinc-950 block">
                           {card.title}
                         </span>
                         <span className="text-[11px] text-zinc-500 mt-1 block leading-normal">
                           {card.desc}
                         </span>
                       </div>
-                      <div className="mt-2.5 flex items-center gap-1 text-[11px] text-zinc-400 group-hover:text-zinc-700">
+                      <div className="mt-3 flex items-center gap-1 text-[11px] text-zinc-400 group-hover:text-zinc-700">
                         <span>Ask this</span>
                         <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                       </div>

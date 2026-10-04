@@ -196,7 +196,7 @@ export default function Auth({ onLogin, config }) {
                 }}
                 className="py-2.5 px-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white brutal-border text-[11px] font-bold uppercase tracking-wider transition text-center min-h-[44px] brutal-shadow-active flex items-center justify-center gap-1"
               >
-                👤 Fill Student
+                Fill Student
               </button>
               <button
                 type="button"
@@ -206,7 +206,7 @@ export default function Auth({ onLogin, config }) {
                 }}
                 className="py-2.5 px-2 bg-[#F4F1EA] hover:bg-[#111111] hover:text-white brutal-border text-[11px] font-bold uppercase tracking-wider transition text-center min-h-[44px] brutal-shadow-active flex items-center justify-center gap-1"
               >
-                🛡️ Fill Admin
+                Fill Admin
               </button>
             </div>
           </div>
