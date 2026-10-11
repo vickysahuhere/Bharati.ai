@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 from datetime import datetime
 from typing import Optional, List
 import fitz  # PyMuPDF
@@ -347,6 +348,9 @@ def extract_and_chunk(file_path: str, mime_type: str, chunk_size: int = 500, ove
                 i += chunk_size - overlap
                 part += 1
                 
+        # Cooperative yielding to allow student HTTP requests priority on single-core CPU
+        time.sleep(0.01)
+
     return chunks
 
 def ingest_version(payload: dict):

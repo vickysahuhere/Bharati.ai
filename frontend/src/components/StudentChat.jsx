@@ -220,7 +220,10 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
         }),
       });
 
-      if (streamRes.ok && streamRes.body) {
+      if (streamRes.status === 429) {
+        botContent = "Rate limit reached. Please wait a moment before sending another question.";
+        botSources = [];
+      } else if (streamRes.ok && streamRes.body) {
         const reader = streamRes.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -266,7 +269,10 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
           }),
         });
 
-        if (res.ok) {
+        if (res.status === 429) {
+          botContent = "Rate limit reached. Please wait a moment before sending another question.";
+          botSources = [];
+        } else if (res.ok) {
           const data = await res.json();
           botContent = data.content || '';
           botSources = data.sources || [];

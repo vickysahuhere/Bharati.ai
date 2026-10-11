@@ -55,11 +55,19 @@ export default function App() {
   const [loginSuccess, setLoginSuccess] = useState('');
   const [clearSuccess, setClearSuccess] = useState('');
 
-  // Fetch college configuration
+  // Fetch college configuration with sessionStorage cache
   useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem('camp_ai_config');
+      if (cached) setConfig(JSON.parse(cached));
+    } catch (e) {}
+
     fetch('/api/public/config')
       .then((r) => r.json())
-      .then(setConfig)
+      .then((data) => {
+        setConfig(data);
+        sessionStorage.setItem('camp_ai_config', JSON.stringify(data));
+      })
       .catch(console.error);
   }, []);
 

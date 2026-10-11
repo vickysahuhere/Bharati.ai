@@ -437,3 +437,156 @@ Strict Directives:
         yield {"type": "token", "token": f" (Stream error: {str(e)})"}
     yield {"type": "done"}
 
+
+async def agenerate_answer_stream(
+    query: str,
+    knowledge_domain: Optional[str] = None,
+    department: Optional[str] = None,
+    semester: Optional[int] = None,
+    subject: Optional[str] = None,
+    chat_history: Optional[List[Dict[str, str]]] = None
+):
+    """
+    High-concurrency async streaming generator.
+    Streams tokens via httpx.AsyncClient without occupying threadpool workers.
+    """
+    clean_query = query.strip()
+    if GREETINGS_PATTERN.match(clean_query):
+        settings = get_settings()
+        if settings.groq_api_key:
+            greeting_prompt = """You are Bharti.ai, the official AI assistant for Bharati Vidyapeeth University.
+You were built and created by Vicky Sahu, founder of Maithil Studios (maithilstudios.vercel.app).
+If the user greets you or says hi/hello/hey, reply warmly, introduce yourself briefly, and invite them to ask about admissions, examination datesheets, courses, syllabus, and fee structures.
+Keep the greeting friendly, concise, and helpful."""
+            msgs = [{"role": "system", "content": greeting_prompt}]
+            if chat_history:
+                for msg in chat_history[-4:]:
+                    msgs.append({"role": msg["role"], "content": msg["content"]})
+            msgs.append({"role": "user", "content": query})
+            try:
+                llm = get_llm()
+                yield {"type": "meta", "sources": [], "found": True}
+                if hasattr(llm, "agenerate_stream"):
+                    async for token in llm.agenerate_stream(msgs, temperature=0.3):
+                        yield {"type": "token", "token": token}
+                else:
+                    for token in llm.generate_stream(msgs, temperature=0.3):
+                        yield {"type": "token", "token": token}
+                yield {"type": "done"}
+                return
+            except Exception:
+                pass
+        yield {"type": "meta", "sources": [], "found": True}
+        yield {"type": "token", "token": "Hello! I am Bharti.ai, the official assistant for Bharati Vidyapeeth University. How can I help you today with admissions, exam datesheets, syllabus, or fee structures?"}
+        yield {"type": "done"}
+        return
+
+    # 1. Rewrite query if there is history
+    search_query = rewrite_query(query, chat_history) if chat_history else query
+    
+    # 2. Retrieve chunks (runs fast hybrid HNSW + tsvector query with cache)
+    chunks = hybrid_search(
+        query=search_query,
+        knowledge_domain=knowledge_domain,
+        department=department,
+        semester=semester,
+        subject=subject,
+        top_k=5,
+        min_score=0.15
+    )
+
+    if not chunks:
+        log_unresolved_query(query)
+        settings = get_settings()
+        if settings.groq_api_key:
+            fallback_prompt = """You are Bharti.ai, the official AI assistant for Bharati Vidyapeeth University.
+You were built and created by Vicky Sahu, founder of Maithil Studios (maithilstudios.vercel.app).
+Strict Directives:
+1. DOMAIN ISOLATION (ZERO OUT-OF-SCOPE HALLUCINATION): You are exclusively a campus assistance AI for Bharati Vidyapeeth University. Never answer out-of-scope non-college questions. Refuse politely if out of scope.
+2. ZERO HALLUCINATION / MISSING INFO: If the user asks an institutional college question but official records for that specific query are not yet in the database, reply:
+   "I'm sorry, but I don't have that information in the college database. Please contact the administration."
+- Keep responses clean, concise, polite, and well-formatted."""
+            fallback_msgs = [{"role": "system", "content": fallback_prompt}]
+            if chat_history:
+                for msg in chat_history[-4:]:
+                    fallback_msgs.append({"role": msg["role"], "content": msg["content"]})
+            fallback_msgs.append({"role": "user", "content": query})
+            try:
+                llm = get_llm()
+                yield {"type": "meta", "sources": [], "found": False}
+                if hasattr(llm, "agenerate_stream"):
+                    async for token in llm.agenerate_stream(fallback_msgs, temperature=0.3):
+                        yield {"type": "token", "token": token}
+                else:
+                    for token in llm.generate_stream(fallback_msgs, temperature=0.3):
+                        yield {"type": "token", "token": token}
+                yield {"type": "done"}
+                return
+            except Exception:
+                pass
+
+        yield {"type": "meta", "sources": [], "found": False}
+        yield {"type": "token", "token": NOT_FOUND_RESPONSE}
+        yield {"type": "done"}
+        return
+
+    # 3. Build fenced context and citations
+    context_blocks = []
+    sources = []
+    seen_cite_keys = set()
+    for i, c in enumerate(chunks, start=1):
+        cite_key = (c["document_id"], c.get("page"), c.get("section"))
+        if cite_key not in seen_cite_keys:
+            sources.append({
+                "document_id": c["document_id"],
+                "title": c["title"],
+                "domain": c["domain"],
+                "page": c["page"],
+                "section": c["section"],
+                "source_url": c.get("source_url"),
+                "effective_date": c.get("effective_date"),
+                "expiration_date": c.get("expiration_date"),
+                "department": c.get("department"),
+                "semester": c.get("semester")
+            })
+            seen_cite_keys.add(cite_key)
+        
+        valid_from = c.get("effective_date") or "Published"
+        valid_to = c.get("expiration_date") or "Ongoing"
+        meta = c.get("metadata") or {}
+        dates_list = meta.get("dates", [])
+        dates_str = ", ".join(dates_list[:6]) if dates_list else "None specified"
+        dept = c.get("department") or "University-wide"
+        chunk_sems = meta.get("semesters") or []
+        sem = f"Semesters: {', '.join(str(s) for s in chunk_sems)}" if chunk_sems else (f"Semester {c['semester']}" if c.get("semester") else "All Semesters")
+        sec = f" | Section: {c['section']}" if c.get("section") else ""
+        doc_type = (c.get("document_type") or c.get("domain") or "Official Notice").upper()
+
+        block = (
+            f"[Source {i}: {c['title']} | Type: {doc_type} | Dept: {dept} | {sem}{sec} | "
+            f"Validity Period: {valid_from} to {valid_to} | Key Dates: {dates_str} | Page {c['page'] or 1}]\n"
+            f"{c['content']}"
+        )
+        context_blocks.append(block)
+
+    formatted_context = "\n\n".join(context_blocks)
+    messages = [{"role": "system", "content": SYSTEM_PROMPT.format(context_blocks=formatted_context)}]
+    if chat_history:
+        for msg in chat_history[-6:]:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.append({"role": "user", "content": query})
+
+    yield {"type": "meta", "sources": sources, "found": True}
+    try:
+        llm = get_llm()
+        if hasattr(llm, "agenerate_stream"):
+            async for token in llm.agenerate_stream(messages, temperature=0.1):
+                yield {"type": "token", "token": token}
+        else:
+            for token in llm.generate_stream(messages, temperature=0.1):
+                yield {"type": "token", "token": token}
+    except Exception as e:
+        yield {"type": "token", "token": f" (Stream error: {str(e)})"}
+    yield {"type": "done"}
+
+

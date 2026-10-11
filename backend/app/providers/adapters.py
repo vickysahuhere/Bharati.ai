@@ -54,6 +54,32 @@ class GroqLLM:
                     except Exception:
                         continue
 
+    async def agenerate_stream(self, messages: list[dict], temperature: float = 0.1):
+        import json
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            async with client.stream(
+                "POST",
+                self.URL,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                json={"model": self.model, "messages": messages, "temperature": temperature, "stream": True},
+            ) as r:
+                r.raise_for_status()
+                async for line in r.aiter_lines():
+                    if not line:
+                        continue
+                    if line.startswith("data: "):
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk_json = json.loads(data_str)
+                            delta = chunk_json["choices"][0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                yield content
+                        except Exception:
+                            continue
+
 
 class FastEmbedder:
     """Local CPU embeddings: free, on-prem, thread-safe, uses pre-cached ONNX weights."""
