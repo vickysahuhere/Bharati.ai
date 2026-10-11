@@ -11,12 +11,5 @@ def pool() -> ConnectionPool:
         if ("supabase" in db_url or "neon" in db_url) and "sslmode" not in db_url:
             separator = "&" if "?" in db_url else "?"
             db_url = f"{db_url}{separator}sslmode=require"
-        _pool = ConnectionPool(
-            db_url,
-            min_size=1,
-            max_size=20,
-            timeout=30.0,
-            max_idle=300.0,
-            open=True
-        )
+        _pool = ConnectionPool(db_url, min_size=1, max_size=20, open=True)
     return _pool

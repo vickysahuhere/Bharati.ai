@@ -33,9 +33,12 @@ app.include_router(chat.router)
 
 @app.get("/health")
 def health():
-    with pool().connection() as c:
-        c.execute("SELECT 1")
-    return {"status": "ok"}
+    try:
+        with pool().connection() as c:
+            c.execute("SELECT 1")
+        return {"status": "ok", "database": "connected"}
+    except Exception as e:
+        return {"status": "degraded", "database_error": str(e)}
 
 
 from pathlib import Path
