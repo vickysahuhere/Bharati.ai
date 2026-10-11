@@ -13,11 +13,10 @@ def pool() -> ConnectionPool:
             db_url = f"{db_url}{separator}sslmode=require"
         _pool = ConnectionPool(
             db_url,
-            min_size=2,
+            min_size=1,
             max_size=20,
-            timeout=10.0,
+            timeout=30.0,
             max_idle=300.0,
-            check=ConnectionPool.check_connection,
             open=True
         )
     return _pool
