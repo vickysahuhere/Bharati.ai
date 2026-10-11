@@ -33,12 +33,20 @@ app.include_router(chat.router)
 
 @app.get("/health")
 def health():
+    import psycopg
+    import re
+    db_url = get_settings().database_url
+    if ("supabase" in db_url or "neon" in db_url) and "sslmode" not in db_url:
+        separator = "&" if "?" in db_url else "?"
+        db_url = f"{db_url}{separator}sslmode=require"
     try:
-        with pool().connection() as c:
-            c.execute("SELECT 1")
+        with psycopg.connect(db_url, connect_timeout=5) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
         return {"status": "ok", "database": "connected"}
     except Exception as e:
-        return {"status": "degraded", "database_error": str(e)}
+        safe_err = re.sub(r':[^:@/]+@', ':***@', str(e))
+        return {"status": "degraded", "database_error": safe_err}
 
 
 from pathlib import Path
