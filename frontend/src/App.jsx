@@ -96,6 +96,9 @@ export default function App() {
     setLoginSuccess('');
     setLoginLoading(true);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     try {
       const formData = new URLSearchParams();
       formData.append('username', loginEmail.trim());
@@ -105,9 +108,17 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
+        signal: controller.signal,
       });
 
-      const data = await res.json();
+      let data = {};
+      try {
+        const text = await res.text();
+        data = text ? JSON.parse(text) : {};
+      } catch (parseErr) {
+        throw new Error('Server returned an invalid response. Please verify backend service status.');
+      }
+
       if (!res.ok) {
         throw new Error(data.detail || 'Login failed. Please check your credentials.');
       }
@@ -129,8 +140,13 @@ export default function App() {
         setLoginSuccess('');
       }, 1000);
     } catch (err) {
-      setLoginError(err.message);
+      if (err.name === 'AbortError') {
+        setLoginError('Authentication timed out. The server or database took too long to respond.');
+      } else {
+        setLoginError(err.message || 'Login failed. Please check your connection.');
+      }
     } finally {
+      clearTimeout(timeoutId);
       setLoginLoading(false);
     }
   };
@@ -163,7 +179,7 @@ export default function App() {
   return (
     <div className="flex flex-col h-[100dvh] bg-[#fafafa] dark:bg-zinc-950 overflow-hidden font-sans text-zinc-900 dark:text-zinc-100 select-none sm:select-auto transition-colors">
       {/* Minimalist Top Navigation Header */}
-      <header className="h-14 sm:h-16 shrink-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800 z-40 px-3 sm:px-6 flex items-center justify-between transition-colors">
+      <header className="h-14 sm:h-16 shrink-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800 z-50 px-3 sm:px-6 flex items-center justify-between transition-colors">
         {/* College Brand Block */}
         <div className="flex items-center gap-2.5 sm:gap-3">
           <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/90 dark:border-zinc-700 flex items-center justify-center p-1 overflow-hidden shrink-0 shadow-xs">
@@ -242,7 +258,10 @@ export default function App() {
 
           {/* Settings Button */}
           <button
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => {
+              setNoticesOpen(false);
+              setSettingsOpen(true);
+            }}
             className="p-2 rounded-lg text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700 transition-all min-h-[36px] min-w-[36px] flex items-center justify-center"
             title="Settings & Admin Access"
             aria-label="Settings"
@@ -262,7 +281,10 @@ export default function App() {
             config={config}
             noticesOpen={noticesOpen}
             setNoticesOpen={setNoticesOpen}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={() => {
+              setNoticesOpen(false);
+              setSettingsOpen(true);
+            }}
             theme={theme}
           />
         )}
@@ -271,26 +293,26 @@ export default function App() {
       {/* Minimalist Settings & Admin Login Modal */}
       {settingsOpen && (
         <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-center justify-center p-4 animate-in fade-in duration-150"
           onClick={(e) => {
             if (e.target === e.currentTarget) setSettingsOpen(false);
           }}
         >
-          <div className="bg-white rounded-2xl border border-zinc-200 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
             {/* Modal Header */}
-            <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+            <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-zinc-900/50">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-zinc-100 border border-zinc-200 flex items-center justify-center text-zinc-700">
+                <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-zinc-700 dark:text-zinc-200">
                   <SettingsIcon className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-zinc-900 text-sm">Settings & Access</h3>
-                  <p className="text-[11px] text-zinc-500">System preferences and administration</p>
+                  <h3 className="font-semibold text-zinc-900 dark:text-white text-sm">Settings & Access</h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">System preferences and administration</p>
                 </div>
               </div>
               <button
                 onClick={() => setSettingsOpen(false)}
-                className="p-1.5 text-zinc-400 hover:text-zinc-700 rounded-lg hover:bg-zinc-100 transition-colors"
+                className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
                 aria-label="Close settings"
               >
                 <X className="w-4 h-4" />
@@ -301,77 +323,77 @@ export default function App() {
             <div className="p-5 space-y-6 overflow-y-auto no-scrollbar">
               {/* Section 1: System Information */}
               <div className="space-y-2.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 block">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 block">
                   System Overview
                 </span>
-                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200/80 space-y-2 text-xs">
+                <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200/80 dark:border-zinc-800 space-y-2 text-xs">
                   <div className="flex justify-between items-center">
-                    <span className="text-zinc-500">Institution:</span>
-                    <span className="font-medium text-zinc-800">{config?.college_name || 'Bharti Vidyapeeth'}</span>
+                    <span className="text-zinc-500 dark:text-zinc-400">Institution:</span>
+                    <span className="font-medium text-zinc-800 dark:text-zinc-200">{config?.college_name || 'Bharti Vidyapeeth'}</span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-zinc-500">RAG Vector Engine:</span>
-                    <span className="font-medium text-emerald-600 flex items-center gap-1">
+                    <span className="text-zinc-500 dark:text-zinc-400">RAG Vector Engine:</span>
+                    <span className="font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      Gemini 1.5 Flash + Supabase
+                      Groq Llama 3.3 70B + PgVector (384-dim)
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-zinc-500">Visitor Mode:</span>
-                    <span className="font-medium text-zinc-700">Open Public Access (No Login Required)</span>
+                    <span className="text-zinc-500 dark:text-zinc-400">Visitor Mode:</span>
+                    <span className="font-medium text-zinc-700 dark:text-zinc-300">Open Public Access (No Login Required)</span>
                   </div>
                 </div>
               </div>
 
               {/* Section 2: Local Storage & Privacy */}
               <div className="space-y-2.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 block">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 block">
                   Local Data & Privacy
                 </span>
-                <div className="p-3.5 rounded-xl border border-zinc-200/80 flex items-center justify-between gap-3">
+                <div className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 dark:bg-zinc-950/40 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <h4 className="text-xs font-semibold text-zinc-800">Clear Local Conversations</h4>
-                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                    <h4 className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Clear Local Conversations</h4>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
                       Deletes all saved chat threads and history from this device.
                     </p>
                   </div>
                   <button
                     onClick={handleClearChatHistory}
-                    className="px-3 py-1.5 text-xs font-medium text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100/80 border border-red-200/60 rounded-lg flex items-center gap-1.5 transition-colors shrink-0"
+                    className="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 bg-red-50 dark:bg-red-950/40 hover:bg-red-100/80 dark:hover:bg-red-900/50 border border-red-200/60 dark:border-red-900/50 rounded-lg flex items-center gap-1.5 transition-colors shrink-0"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     Clear
                   </button>
                 </div>
                 {clearSuccess && (
-                  <p className="text-[11px] text-emerald-600 flex items-center gap-1">
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                     <CheckCircle2 className="w-3.5 h-3.5" /> {clearSuccess}
                   </p>
                 )}
               </div>
 
               {/* Section 3: Administrator Access */}
-              <div className="space-y-3 pt-2 border-t border-zinc-100">
+              <div className="space-y-3 pt-2 border-t border-zinc-100 dark:border-zinc-800">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 block">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 block">
                     Institutional Administration
                   </span>
                   {adminToken && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      <Shield className="w-3 h-3 text-emerald-600" /> Active Admin
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      <Shield className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Active Admin
                     </span>
                   )}
                 </div>
 
                 {adminToken ? (
-                  <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 space-y-3">
+                  <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 space-y-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-zinc-200 flex items-center justify-center font-semibold text-xs text-zinc-700">
+                      <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center font-semibold text-xs text-zinc-700 dark:text-zinc-200">
                         {adminEmail.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-xs font-semibold text-zinc-900 truncate">{adminEmail}</div>
-                        <div className="text-[11px] text-zinc-500">Administrator Privileges Enabled</div>
+                        <div className="text-xs font-semibold text-zinc-900 dark:text-white truncate">{adminEmail}</div>
+                        <div className="text-[11px] text-zinc-500 dark:text-zinc-400">Administrator Privileges Enabled</div>
                       </div>
                     </div>
 
@@ -382,13 +404,13 @@ export default function App() {
                           localStorage.setItem('camp_ai_view', 'admin');
                           setSettingsOpen(false);
                         }}
-                        className="flex-1 py-2 px-3 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                        className="flex-1 py-2 px-3 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white rounded-lg transition-colors flex items-center justify-center gap-1.5"
                       >
                         <Shield className="w-3.5 h-3.5" /> Go to Admin Panel
                       </button>
                       <button
                         onClick={handleAdminLogout}
-                        className="py-2 px-3 text-xs font-medium text-zinc-700 bg-white hover:bg-zinc-100 border border-zinc-200 rounded-lg transition-colors flex items-center justify-center gap-1.5"
+                        className="py-2 px-3 text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg transition-colors flex items-center justify-center gap-1.5"
                       >
                         <LogOut className="w-3.5 h-3.5" /> Sign Out
                       </button>
@@ -396,55 +418,55 @@ export default function App() {
                   </div>
                 ) : (
                   <form onSubmit={handleAdminLogin} className="space-y-3">
-                    <div className="p-3 bg-zinc-50 rounded-xl border border-zinc-200/80 text-[11px] text-zinc-600 flex items-start gap-2">
-                      <Info className="w-4 h-4 text-zinc-400 shrink-0 mt-0.5" />
+                    <div className="p-3 bg-zinc-50 dark:bg-zinc-950/60 rounded-xl border border-zinc-200/80 dark:border-zinc-800 text-[11px] text-zinc-600 dark:text-zinc-400 flex items-start gap-2">
+                      <Info className="w-4 h-4 text-zinc-400 dark:text-zinc-500 shrink-0 mt-0.5" />
                       <span>
                         Students & parents do not need to sign in. Admin login is strictly for document ingestion and database management.
                       </span>
                     </div>
 
                     {loginError && (
-                      <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600 flex items-center gap-2">
+                      <div className="p-2.5 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 text-xs text-red-600 dark:text-red-300 flex items-center gap-2">
                         <AlertCircle className="w-4 h-4 shrink-0" />
                         <span>{loginError}</span>
                       </div>
                     )}
 
                     {loginSuccess && (
-                      <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 flex items-center gap-2">
+                      <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
                         <CheckCircle2 className="w-4 h-4 shrink-0" />
                         <span>{loginSuccess}</span>
                       </div>
                     )}
 
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-zinc-700">Admin Email</label>
+                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Admin Email</label>
                       <input
                         type="email"
                         required
                         value={loginEmail}
                         onChange={(e) => setLoginEmail(e.target.value)}
                         placeholder="admin@college.edu"
-                        className="w-full px-3 py-2 text-xs bg-white border border-zinc-200 rounded-lg focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400"
+                        className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 rounded-lg focus:outline-none focus:border-zinc-400 dark:focus:border-zinc-600 focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600"
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-xs font-medium text-zinc-700">Password</label>
+                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Password</label>
                       <input
                         type="password"
                         required
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
                         placeholder="••••••••"
-                        className="w-full px-3 py-2 text-xs bg-white border border-zinc-200 rounded-lg focus:outline-none focus:border-zinc-400 focus:ring-1 focus:ring-zinc-400"
+                        className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 rounded-lg focus:outline-none focus:border-zinc-400 dark:focus:border-zinc-600 focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600"
                       />
                     </div>
 
                     <button
                       type="submit"
                       disabled={loginLoading}
-                      className="w-full py-2.5 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs"
+                      className="w-full py-2.5 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
                     >
                       {loginLoading ? (
                         <>

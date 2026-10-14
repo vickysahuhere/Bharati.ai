@@ -96,9 +96,11 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
     return () => window.removeEventListener('camp_ai_clear_history', handleClear);
   }, []);
 
-  // Auto-scroll to bottom of messages
+  // Auto-scroll to bottom of messages only when there are actual messages or active loading
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages && messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [messages, loading]);
 
   // Auto-resize textarea
@@ -112,6 +114,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
   // Fetch notices when notices drawer is opened
   useEffect(() => {
     if (noticesOpen) {
+      setSidebarOpen(false);
       setNoticesLoading(true);
       fetch('/api/documents/public/notices')
         .then((r) => r.json())
@@ -493,33 +496,33 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
   ];
 
   return (
-    <div className="flex h-full w-full bg-[#fafafa] text-zinc-900 overflow-hidden relative">
+    <div className="flex h-full w-full bg-[#fafafa] dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-hidden relative">
       {/* Mobile Sidebar Backdrop Overlay */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/30 backdrop-blur-xs z-30 sm:hidden animate-in fade-in duration-150"
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs z-30 sm:hidden animate-in fade-in duration-150"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* Minimalist Sidebar */}
       <aside
-        className={`fixed sm:relative top-0 bottom-0 left-0 w-72 sm:w-64 bg-white border-r border-zinc-200/90 z-40 flex flex-col transition-transform duration-200 ease-in-out shrink-0 ${
+        className={`fixed sm:relative top-0 bottom-0 left-0 w-72 sm:w-64 bg-white dark:bg-zinc-950 border-r border-zinc-200/90 dark:border-zinc-800 z-40 sm:z-auto flex flex-col transition-transform duration-200 ease-in-out shrink-0 ${
           sidebarOpen ? 'translate-x-0 shadow-2xl sm:shadow-none' : '-translate-x-full sm:translate-x-0'
         }`}
       >
         {/* Sidebar Header: New Chat Button */}
-        <div className="p-3 sm:p-3.5 border-b border-zinc-100 flex items-center gap-2">
+        <div className="p-3 sm:p-3.5 border-b border-zinc-100 dark:border-zinc-800 flex items-center gap-2">
           <button
             onClick={handleStartNewChat}
-            className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium flex items-center justify-center gap-2 shadow-xs transition-colors"
+            className="flex-1 px-3.5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white text-white text-xs font-medium flex items-center justify-center gap-2 shadow-xs transition-colors"
           >
             <Plus className="w-4 h-4" />
             <span>New Chat</span>
           </button>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="sm:hidden p-2 text-zinc-500 hover:text-zinc-800 rounded-lg hover:bg-zinc-100 transition-colors"
+            className="sm:hidden p-2 text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
             aria-label="Close sidebar"
           >
             <X className="w-4 h-4" />
@@ -528,13 +531,13 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
 
         {/* Threads List */}
         <div className="flex-1 overflow-y-auto px-2 py-3 space-y-1 no-scrollbar">
-          <div className="px-2 pb-1.5 flex items-center justify-between text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+          <div className="px-2 pb-1.5 flex items-center justify-between text-[11px] font-semibold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
             <span>Conversations</span>
-            <span className="text-zinc-400 font-normal">{threads.length}</span>
+            <span className="text-zinc-400 dark:text-zinc-500 font-normal">{threads.length}</span>
           </div>
 
           {threads.length === 0 ? (
-            <div className="px-3 py-8 text-center text-xs text-zinc-400">
+            <div className="px-3 py-8 text-center text-xs text-zinc-400 dark:text-zinc-500">
               <MessageSquare className="w-6 h-6 mx-auto mb-2 opacity-30 stroke-1" />
               <span>No conversations yet.</span>
             </div>
@@ -554,8 +557,8 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                   }}
                   className={`group relative flex items-center justify-between px-3 py-2.5 rounded-xl text-xs transition-all cursor-pointer ${
                     isActive
-                      ? 'bg-zinc-100 text-zinc-900 font-medium'
-                      : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900'
+                      ? 'bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white font-medium'
+                      : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-900/60 hover:text-zinc-900 dark:hover:text-zinc-200'
                   }`}
                 >
                   {isEditing ? (
@@ -569,11 +572,11 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                           if (e.key === 'Enter') handleSaveRename(thread.id, e);
                           if (e.key === 'Escape') setEditingThreadId(null);
                         }}
-                        className="flex-1 px-2 py-1 text-xs bg-white border border-zinc-300 rounded-md focus:outline-none focus:border-zinc-500"
+                        className="flex-1 px-2 py-1 text-xs bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-md focus:outline-none focus:border-zinc-500"
                       />
                       <button
                         onClick={(e) => handleSaveRename(thread.id, e)}
-                        className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                        className="p-1 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 rounded"
                         title="Save"
                       >
                         <Check className="w-3.5 h-3.5" />
@@ -583,7 +586,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                           e.stopPropagation();
                           setEditingThreadId(null);
                         }}
-                        className="p-1 text-zinc-400 hover:bg-zinc-100 rounded"
+                        className="p-1 text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
                         title="Cancel"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -592,21 +595,21 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                   ) : (
                     <>
                       <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
-                        <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-zinc-900' : 'text-zinc-400'}`} />
+                        <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-zinc-900 dark:text-white' : 'text-zinc-400 dark:text-zinc-500'}`} />
                         <span className="truncate">{thread.title || 'Untitled Chat'}</span>
                       </div>
 
                       <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity">
                         <button
                           onClick={(e) => handleStartRename(thread, e)}
-                          className="p-1 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-200/60 rounded"
+                          className="p-1 text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/60 dark:hover:bg-zinc-800 rounded"
                           title="Rename"
                         >
                           <Edit2 className="w-3 h-3" />
                         </button>
                         <button
                           onClick={(e) => handleDeleteThread(thread.id, e)}
-                          className="p-1 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded"
+                          className="p-1 text-zinc-400 dark:text-zinc-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 rounded"
                           title="Delete"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -621,11 +624,11 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
         </div>
 
         {/* Sidebar Footer */}
-        <div className="p-3 border-t border-zinc-100 bg-zinc-50/50 flex items-center justify-between text-[11px] text-zinc-500">
+        <div className="p-3 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/50 flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400">
           <span className="truncate">{config?.college_name || 'Bharti.ai'}</span>
           <button
             onClick={onOpenSettings}
-            className="hover:text-zinc-800 underline transition-colors"
+            className="hover:text-zinc-800 dark:hover:text-zinc-200 underline transition-colors"
           >
             Settings
           </button>
@@ -688,42 +691,42 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
         </div>
 
         {/* Messages Scroll Area */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6">
+        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3 sm:py-6 space-y-6">
           <div className="max-w-3xl mx-auto w-full space-y-6">
             {messages.length === 0 ? (
               /* Minimalist Empty State */
-              <div className="py-8 sm:py-14 flex flex-col items-center text-center animate-in fade-in duration-300">
-                <div className="w-12 h-12 rounded-2xl bg-zinc-100 border border-zinc-200/80 flex items-center justify-center text-zinc-800 mb-4 shadow-xs">
-                  <Sparkles className="w-6 h-6 text-zinc-700" />
+              <div className="py-4 sm:py-10 flex flex-col items-center text-center animate-in fade-in duration-300">
+                <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700 flex items-center justify-center text-zinc-800 dark:text-zinc-200 mb-3 sm:mb-4 shadow-xs">
+                  <Sparkles className="w-6 h-6 text-zinc-700 dark:text-zinc-300" />
                 </div>
 
-                <h2 className="text-xl sm:text-2xl font-semibold text-zinc-900 tracking-tight">
+                <h2 className="text-xl sm:text-2xl font-semibold text-zinc-900 dark:text-white tracking-tight">
                   How can I help you today?
                 </h2>
-                <p className="text-xs sm:text-sm text-zinc-500 mt-1.5 max-w-md leading-relaxed">
+                <p className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400 mt-1.5 max-w-md leading-relaxed">
                   Ask questions about Bharti Vidyapeeth — admissions, fee structures, examination datesheets, and course syllabus.
                 </p>
 
                 {/* 4 Minimalist Prompt Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-8 w-full text-left">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-6 sm:mt-8 w-full text-left">
                   {quickPrompts.map((card, idx) => (
                     <button
                       key={idx}
                       onClick={() => handleSend(card.prompt)}
-                      className="p-3.5 rounded-xl border border-zinc-200/80 bg-white hover:border-zinc-300 hover:bg-zinc-50/70 hover:shadow-xs transition-all group flex flex-col justify-between"
+                      className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900/90 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-50/70 dark:hover:bg-zinc-800/80 hover:shadow-xs transition-all group flex flex-col justify-between"
                     >
                       <div>
-                        <div className="w-7 h-7 rounded-lg bg-zinc-100 border border-zinc-200/70 flex items-center justify-center text-zinc-700 mb-2.5 group-hover:bg-zinc-200/80 group-hover:text-zinc-900 transition-colors">
+                        <div className="w-7 h-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/70 dark:border-zinc-700 flex items-center justify-center text-zinc-700 dark:text-zinc-300 mb-2.5 group-hover:bg-zinc-200/80 dark:group-hover:bg-zinc-700 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">
                           <card.icon className="w-3.5 h-3.5" />
                         </div>
-                        <span className="text-xs font-semibold text-zinc-900 group-hover:text-zinc-950 block">
+                        <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 group-hover:text-zinc-950 dark:group-hover:text-white block">
                           {card.title}
                         </span>
-                        <span className="text-[11px] text-zinc-500 mt-1 block leading-normal">
+                        <span className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 block leading-normal">
                           {card.desc}
                         </span>
                       </div>
-                      <div className="mt-3 flex items-center gap-1 text-[11px] text-zinc-400 group-hover:text-zinc-700">
+                      <div className="mt-3 flex items-center gap-1 text-[11px] text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-700 dark:group-hover:text-zinc-300">
                         <span>Ask this</span>
                         <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                       </div>
@@ -745,15 +748,15 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                       className={`relative ${
                         isUser
                           ? 'bg-zinc-900 text-white rounded-2xl rounded-tr-xs px-4 py-3 max-w-[85%] sm:max-w-[75%] shadow-xs'
-                          : 'bg-white border border-zinc-200/80 rounded-2xl rounded-tl-xs px-4 sm:px-5 py-4 max-w-[98%] sm:max-w-[88%] text-zinc-800 shadow-xs'
+                          : 'bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl rounded-tl-xs px-4 sm:px-5 py-4 max-w-[98%] sm:max-w-[88%] text-zinc-800 dark:text-zinc-200 shadow-xs'
                       }`}
                     >
                       <FormattedMessage content={msg.content} isUser={isUser} />
 
                       {/* Source Citation Pills for Assistant */}
                       {!isUser && msg.content && msg.content.trim() && msg.sources && msg.sources.length > 0 && !msg.content.includes("I'm sorry, but I couldn't find") && (
-                        <div className="mt-4 pt-3 border-t border-zinc-100 space-y-2">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 block">
+                        <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 block">
                             Retrieved Sources ({msg.sources.length})
                           </span>
                           <div className="flex flex-wrap gap-1.5">
@@ -764,10 +767,10 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                                 <button
                                   key={sIdx}
                                   onClick={() => setSelectedSource(src)}
-                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] bg-zinc-50 hover:bg-zinc-100 border border-zinc-200 text-zinc-700 hover:text-zinc-900 transition-colors shadow-2xs"
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] bg-zinc-50 dark:bg-zinc-800/80 hover:bg-zinc-100 dark:hover:bg-zinc-700/80 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white transition-colors shadow-2xs"
                                   title="View source citation and excerpt"
                                 >
-                                  <FileText className="w-3 h-3 text-zinc-500" />
+                                  <FileText className="w-3 h-3 text-zinc-500 dark:text-zinc-400" />
                                   <span className="truncate max-w-[200px]">{title}{pageStr}</span>
                                 </button>
                               );
@@ -779,16 +782,16 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
 
                     {/* Action Bar for Assistant */}
                     {!isUser && (
-                      <div className="flex items-center gap-1 mt-1.5 px-1 text-zinc-400">
+                      <div className="flex items-center gap-1 mt-1.5 px-1 text-zinc-400 dark:text-zinc-500">
                         <button
                           onClick={() => handleCopy(msg.id, msg.content)}
-                          className="p-1 hover:text-zinc-700 rounded hover:bg-zinc-100 transition-colors flex items-center gap-1 text-[11px]"
+                          className="p-1 hover:text-zinc-700 dark:hover:text-zinc-300 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-1 text-[11px]"
                           title="Copy response"
                         >
                           {copiedMessageId === msg.id ? (
                             <>
                               <Check className="w-3 h-3 text-emerald-500" />
-                              <span className="text-emerald-600 font-medium">Copied</span>
+                              <span className="text-emerald-600 dark:text-emerald-400 font-medium">Copied</span>
                             </>
                           ) : (
                             <>
@@ -828,11 +831,11 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
             {/* Loading Indicator */}
             {loading && (
               <div className="flex items-start gap-3 animate-in fade-in duration-150">
-                <div className="bg-white border border-zinc-200/80 rounded-2xl rounded-tl-xs px-4 py-3 shadow-xs flex items-center gap-2.5 text-xs text-zinc-500">
+                <div className="bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 rounded-2xl rounded-tl-xs px-4 py-3 shadow-xs flex items-center gap-2.5 text-xs text-zinc-500 dark:text-zinc-400">
                   <div className="flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0.2s]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-bounce [animation-delay:0.4s]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500 animate-bounce" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500 animate-bounce [animation-delay:0.2s]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 dark:bg-zinc-500 animate-bounce [animation-delay:0.4s]" />
                   </div>
                   <span>Searching verified college database...</span>
                 </div>
@@ -844,21 +847,21 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
         </div>
 
         {/* Minimalist Floating Input Container */}
-        <div className="p-3 sm:p-4 bg-white/95 backdrop-blur-md border-t border-zinc-100 shrink-0">
+        <div className="p-3 sm:p-4 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-t border-zinc-100 dark:border-zinc-800 shrink-0">
           <div className="max-w-3xl mx-auto w-full">
             {/* Active Tag Filters */}
             {activeTags.length > 0 && (
               <div className="flex items-center gap-1.5 mb-2 overflow-x-auto no-scrollbar py-0.5">
-                <span className="text-[11px] text-zinc-400 shrink-0">Filtered by:</span>
+                <span className="text-[11px] text-zinc-400 dark:text-zinc-500 shrink-0">Filtered by:</span>
                 {activeTags.map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-zinc-100 text-zinc-800 border border-zinc-200 shrink-0"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-200 dark:border-zinc-700 shrink-0"
                   >
                     #{tag}
                     <button
                       onClick={() => handleTagToggle(tag)}
-                      className="hover:text-red-500"
+                      className="hover:text-red-500 transition-colors"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -866,7 +869,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                 ))}
                 <button
                   onClick={() => setActiveTags([])}
-                  className="text-[10px] text-zinc-400 hover:text-zinc-600 underline shrink-0"
+                  className="text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 underline shrink-0"
                 >
                   Clear tags
                 </button>
@@ -874,7 +877,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
             )}
 
             {/* Prompt Box */}
-            <div className="relative rounded-2xl border border-zinc-300 focus-within:border-zinc-500 focus-within:ring-2 focus-within:ring-zinc-100 bg-white shadow-xs p-1.5 transition-all flex flex-col">
+            <div className="relative rounded-2xl border border-zinc-300 dark:border-zinc-700 focus-within:border-zinc-500 dark:focus-within:border-zinc-500 focus-within:ring-2 focus-within:ring-zinc-100 dark:focus-within:ring-zinc-800/60 bg-white dark:bg-zinc-900 shadow-xs p-1.5 transition-all flex flex-col">
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -887,7 +890,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                 }}
                 rows={1}
                 placeholder="Ask anything about Bharti Vidyapeeth (e.g. Sem 3 datesheet, tuition fees)..."
-                className="w-full resize-none border-0 bg-transparent px-3 py-2 text-xs sm:text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-0 max-h-36 leading-relaxed"
+                className="w-full resize-none border-0 bg-transparent px-3 py-2 text-xs sm:text-sm text-zinc-800 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-0 max-h-36 leading-relaxed"
               />
 
               <div className="flex items-center justify-between pt-1 px-1">
@@ -895,7 +898,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                 <div className="relative">
                   <button
                     onClick={() => setTagsPickerOpen(!tagsPickerOpen)}
-                    className="px-2.5 py-1 text-[11px] text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg flex items-center gap-1 transition-colors"
+                    className="px-2.5 py-1 text-[11px] text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg flex items-center gap-1 transition-colors"
                     title="Filter query by department, semester, or topic tag"
                   >
                     <Tag className="w-3.5 h-3.5" />
@@ -904,11 +907,11 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
 
                   {/* Tag Selector Popover */}
                   {tagsPickerOpen && (
-                    <div className="absolute bottom-8 left-0 w-72 bg-white rounded-xl border border-zinc-200 shadow-xl p-3 z-50 animate-in zoom-in-95 duration-100">
-                      <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
-                        <span className="text-xs font-semibold text-zinc-800">Campus Keywords</span>
+                    <div className="absolute bottom-8 left-0 w-72 bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xl p-3 z-50 animate-in zoom-in-95 duration-100">
+                      <div className="flex items-center justify-between pb-2 border-b border-zinc-100 dark:border-zinc-800">
+                        <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Campus Keywords</span>
                         <button onClick={() => setTagsPickerOpen(false)}>
-                          <X className="w-3.5 h-3.5 text-zinc-400 hover:text-zinc-600" />
+                          <X className="w-3.5 h-3.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300" />
                         </button>
                       </div>
 
@@ -918,7 +921,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                           placeholder="Search tags (e.g. Sem 3, Datesheet)..."
                           value={tagSearch}
                           onChange={(e) => setTagSearch(e.target.value)}
-                          className="w-full px-2.5 py-1.5 text-xs border border-zinc-200 rounded-lg focus:outline-none focus:border-zinc-400"
+                          className="w-full px-2.5 py-1.5 text-xs bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:border-zinc-400 dark:focus:border-zinc-500 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500"
                         />
                       </div>
 
@@ -933,8 +936,8 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                               onClick={() => handleTagToggle(keyword)}
                               className={`w-full text-left px-2 py-1 rounded text-xs flex items-center justify-between ${
                                 isSelected
-                                  ? 'bg-zinc-900 text-white font-medium'
-                                  : 'hover:bg-zinc-100 text-zinc-700'
+                                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-medium'
+                                  : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
                               }`}
                             >
                               <span>{keyword}</span>
@@ -955,12 +958,12 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                     className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
                       isListening
                         ? 'bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 animate-pulse'
-                        : 'text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                        : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                     }`}
                     title={isListening ? "Listening... click to stop" : "Voice input (Speech to text)"}
                     aria-label="Voice input"
                   >
-                    {isListening ? <MicOff className="w-4 h-4 text-red-600" /> : <Mic className="w-4 h-4" />}
+                    {isListening ? <MicOff className="w-4 h-4 text-red-600 dark:text-red-400" /> : <Mic className="w-4 h-4" />}
                   </button>
 
                   <button
@@ -968,8 +971,8 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                     disabled={!input.trim() || loading}
                     className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
                       input.trim() && !loading
-                        ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:bg-zinc-800 shadow-xs'
-                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed'
+                        ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-white shadow-xs cursor-pointer'
+                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
                     }`}
                     aria-label="Send query"
                   >
@@ -980,7 +983,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
             </div>
 
             {/* Disclaimer */}
-            <p className="text-[11px] text-zinc-400 text-center mt-2">
+            <p className="text-[11px] text-zinc-400 dark:text-zinc-500 text-center mt-2">
               Institutional AI references verified college documents. Always confirm official notifications with the administration.
             </p>
           </div>
@@ -990,23 +993,24 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
       {/* Source Citation Modal / Drawer */}
       {selectedSource && (
         <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-center justify-center p-4 animate-in fade-in duration-150"
           onClick={() => setSelectedSource(null)}
         >
           <div
-            className="bg-white rounded-2xl border border-zinc-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]"
+            className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+            <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-zinc-900/50">
               <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-zinc-600" />
-                <h3 className="font-semibold text-zinc-900 text-sm truncate max-w-sm">
+                <FileText className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+                <h3 className="font-semibold text-zinc-900 dark:text-white text-sm truncate max-w-sm">
                   {selectedSource.document_title || selectedSource.title || 'Source Reference'}
                 </h3>
               </div>
               <button
                 onClick={() => setSelectedSource(null)}
-                className="p-1 text-zinc-400 hover:text-zinc-700 rounded-lg"
+                className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                aria-label="Close source modal"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1015,32 +1019,32 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
             <div className="p-5 space-y-4 overflow-y-auto no-scrollbar text-xs">
               <div className="flex flex-wrap gap-2 text-[11px]">
                 {selectedSource.page && (
-                  <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-medium">
+                  <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 font-medium">
                     Page {selectedSource.page}
                   </span>
                 )}
                 {selectedSource.section && (
-                  <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-medium">
+                  <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 font-medium">
                     Section: {selectedSource.section}
                   </span>
                 )}
                 {selectedSource.department && (
-                  <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-medium">
+                  <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 font-medium">
                     Dept: {selectedSource.department}
                   </span>
                 )}
                 {selectedSource.semester && (
-                  <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 font-medium">
+                  <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 font-medium">
                     Semester {selectedSource.semester}
                   </span>
                 )}
               </div>
 
               <div>
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 block mb-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 block mb-1.5">
                   Extracted Context Chunk
                 </span>
-                <div className="p-3.5 rounded-xl bg-zinc-50 border border-zinc-200/80 text-zinc-800 leading-relaxed font-mono text-[11.5px] whitespace-pre-wrap">
+                <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-200/80 dark:border-zinc-800 text-zinc-800 dark:text-zinc-200 leading-relaxed font-mono text-[11.5px] whitespace-pre-wrap">
                   {selectedSource.content || selectedSource.snippet || 'No text snippet available.'}
                 </div>
               </div>
@@ -1051,7 +1055,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                     href={selectedSource.source_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white transition-colors"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     <span>Open Official Document URL</span>
@@ -1066,25 +1070,26 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
       {/* Notice Board Drawer / Modal */}
       {noticesOpen && (
         <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-center justify-center p-4 animate-in fade-in duration-150"
           onClick={() => setNoticesOpen(false)}
         >
           <div
-            className="bg-white rounded-2xl border border-zinc-200 shadow-2xl max-w-xl w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]"
+            className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl max-w-xl w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/50">
+            <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-zinc-900/50">
               <div className="flex items-center gap-2">
-                <Bell className="w-4 h-4 text-zinc-700" />
+                <Bell className="w-4 h-4 text-zinc-700 dark:text-zinc-300" />
                 <div>
-                  <h3 className="font-semibold text-zinc-900 text-sm">Notice Board</h3>
-                  <p className="text-[11px] text-zinc-500">Official circulars, schedules, and college notices</p>
+                  <h3 className="font-semibold text-zinc-900 dark:text-white text-sm">Notice Board</h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">Official circulars, schedules, and college notices</p>
                 </div>
               </div>
               <button
                 onClick={() => setNoticesOpen(false)}
-                className="p-1 text-zinc-400 hover:text-zinc-700 rounded-lg"
+                className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                aria-label="Close notice board"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1093,13 +1098,13 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
             {/* Filter Search */}
             <div className="p-4 border-b border-zinc-100 dark:border-zinc-800 bg-white dark:bg-zinc-900 space-y-2.5">
               <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500" />
                 <input
                   type="text"
                   placeholder="Search notices by keyword, title, subject..."
                   value={noticeSearch}
                   onChange={(e) => setNoticeSearch(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 rounded-lg focus:outline-none focus:border-zinc-400 text-zinc-900 dark:text-zinc-100"
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 rounded-lg focus:outline-none focus:border-zinc-400 dark:focus:border-zinc-500 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500"
                 />
               </div>
 
@@ -1118,10 +1123,10 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                   <button
                     key={pill.id}
                     onClick={() => setNoticeCategoryFilter(pill.id)}
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors ${
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors cursor-pointer ${
                       noticeCategoryFilter === pill.id
                         ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-2xs'
-                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/70 border border-zinc-200/60 dark:border-zinc-700'
+                        : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200/70 dark:hover:bg-zinc-700 border border-zinc-200/60 dark:border-zinc-700'
                     }`}
                   >
                     {pill.label}
@@ -1133,9 +1138,9 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
             {/* Notices List */}
             <div className="p-5 space-y-3 overflow-y-auto no-scrollbar flex-1 bg-white dark:bg-zinc-900">
               {noticesLoading ? (
-                <div className="py-8 text-center text-xs text-zinc-400">Loading notices...</div>
+                <div className="py-8 text-center text-xs text-zinc-400 dark:text-zinc-500">Loading notices...</div>
               ) : notices.length === 0 ? (
-                <div className="py-8 text-center text-xs text-zinc-400">
+                <div className="py-8 text-center text-xs text-zinc-400 dark:text-zinc-500">
                   <FileText className="w-6 h-6 mx-auto mb-2 opacity-30 stroke-1" />
                   <span>No official notices currently uploaded.</span>
                 </div>
@@ -1158,16 +1163,16 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                   .map((notice) => (
                     <div
                       key={notice.id}
-                      className="p-3.5 rounded-xl border border-zinc-200/80 bg-zinc-50/50 hover:bg-zinc-50 transition-colors space-y-2"
+                      className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/40 hover:bg-zinc-100/70 dark:hover:bg-zinc-950 transition-colors space-y-2"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <h4 className="text-xs font-semibold text-zinc-900 leading-snug">{notice.title}</h4>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-200 text-zinc-700 shrink-0">
+                        <h4 className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 leading-snug">{notice.title}</h4>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 border border-zinc-300 dark:border-zinc-700 shrink-0">
                           {notice.document_type || notice.domain || 'Notice'}
                         </span>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
                         {notice.department && <span>Dept: {notice.department}</span>}
                         {notice.semester && <span>Sem: {notice.semester}</span>}
                         {notice.effective_date && (
@@ -1184,7 +1189,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
                             href={notice.source_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] text-zinc-800 hover:text-zinc-950 font-medium underline"
+                            className="inline-flex items-center gap-1 text-[11px] text-zinc-800 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white font-medium underline"
                           >
                             <ExternalLink className="w-3 h-3" /> View Notice Document
                           </a>
