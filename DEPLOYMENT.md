@@ -98,7 +98,7 @@ After=network.target
 User=ubuntu
 WorkingDirectory=/home/ubuntu/camp-ai/backend
 EnvironmentFile=/home/ubuntu/camp-ai/backend/.env
-ExecStart=/home/ubuntu/camp-ai/backend/venv/bin/python -m worker.ingestion
+ExecStart=/home/ubuntu/camp-ai/backend/venv/bin/python -m worker.main
 Restart=always
 
 [Install]
@@ -122,9 +122,24 @@ Since you already have production Dockerfiles:
 3. Create a **Web Service** for `backend/Dockerfile`:
    - Command: `uvicorn app.main:app --host 0.0.0.0 --port 8000`
 4. Create a **Background Worker** for `backend/Dockerfile`:
-   - Command: `python -m worker.ingestion`
+   - Command: `python -m worker.main`
 5. Supply environment variables (`DATABASE_URL`, `GROQ_API_KEY`, `SECRET_KEY`).
 6. Point your Vercel frontend to this Render API URL.
+
+---
+
+## 🤖 Part 4: Anti-Bot & Abuse Protections (Built-In)
+
+The backend includes active anti-bot defenses:
+- **Cloudflare & Reverse Proxy IP Extraction:** Correctly reads `CF-Connecting-IP` and `X-Forwarded-For`.
+- **Malicious Scanner Blocking:** Drops known vulnerability scanners (`sqlmap`, `nikto`, `masscan`, `gobuster`, etc.) with 403 Forbidden.
+- **AI Crawler & Scraper Defense:** `robots.txt` disallows aggressive crawlers (`GPTBot`, `CCBot`, `Bytespider`, `ClaudeBot`) from scraping documents or internal endpoints.
+- **Sliding-Window Rate Limiting:**
+  - Chat Queries & SSE Streaming: Max 25 req/min, burst cap of 6 req/5s.
+  - Auth Login: Max 5 attempts/min, burst cap of 3 req/10s (protects bcrypt from CPU-exhaustion).
+  - Auth Signup: Max 3 signups/5 min.
+- **Honeypot Traps:** Form submissions with filled honeypot fields are dropped immediately without consuming LLM credits or DB cycles.
+- **Payload Guard:** Queries capped at 1,000 characters and chat histories capped at 20 messages to prevent token-depletion attacks.
 
 ---
 

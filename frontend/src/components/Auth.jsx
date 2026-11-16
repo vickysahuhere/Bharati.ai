@@ -19,6 +19,7 @@ export default function Auth({ onLogin, config }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [hpField, setHpField] = useState(''); // Anti-bot honeypot
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,6 +28,14 @@ export default function Auth({ onLogin, config }) {
     e.preventDefault();
     setError('');
     setMessage('');
+
+    // If bot fell into invisible honeypot trap, silently return
+    if (hpField) {
+      setLoading(true);
+      setTimeout(() => setLoading(false), 500);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -34,7 +43,7 @@ export default function Auth({ onLogin, config }) {
         const res = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, full_name: fullName })
+          body: JSON.stringify({ email, password, full_name: fullName, hp_field: hpField })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Signup failed');
@@ -131,6 +140,20 @@ export default function Auth({ onLogin, config }) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Anti-bot honeypot field: invisible to human users, traps automated form fillers */}
+          <div style={{ position: 'absolute', left: '-9999px', opacity: 0, height: 0, overflow: 'hidden' }} aria-hidden="true">
+            <label htmlFor="website_hp">Leave this field blank</label>
+            <input
+              id="website_hp"
+              type="text"
+              name="hp_field"
+              tabIndex={-1}
+              value={hpField}
+              onChange={(e) => setHpField(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
+
           {isSignup && (
             <div>
               <label className="block text-[11px] font-bold text-[#111111]/80 uppercase tracking-widest mb-1.5">Full Name</label>

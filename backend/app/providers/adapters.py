@@ -8,7 +8,7 @@ class GroqLLM:
     def __init__(self, api_key: str, model: str):
         self.api_key, self.model = api_key, model
 
-    def generate(self, messages: list[dict], temperature: float = 0.1) -> str:
+    def generate(self, messages: list[dict], temperature: float = 0.0) -> str:
         import time
         max_retries = 3
         for attempt in range(max_retries):
@@ -28,7 +28,7 @@ class GroqLLM:
             r.raise_for_status()
             return r.json()["choices"][0]["message"]["content"]
 
-    def generate_stream(self, messages: list[dict], temperature: float = 0.1):
+    def generate_stream(self, messages: list[dict], temperature: float = 0.0):
         import json
         with httpx.stream(
             "POST",
@@ -54,7 +54,7 @@ class GroqLLM:
                     except Exception:
                         continue
 
-    async def agenerate_stream(self, messages: list[dict], temperature: float = 0.1):
+    async def agenerate_stream(self, messages: list[dict], temperature: float = 0.0):
         import json
         async with httpx.AsyncClient(timeout=60.0) as client:
             async with client.stream(

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import StudentChat from './components/StudentChat';
+import BudbakChat from './components/BudbakChat';
 import AdminPanel from './components/AdminPanel';
-import { Shield, MessageSquare, Settings as SettingsIcon, X, LogIn, LogOut, CheckCircle2, AlertCircle, Info, Trash2, Bell, Sun, Moon } from 'lucide-react';
+import { BadriAvatar, BudhAvatar } from './components/Avatars';
+import { sounds } from './utils/soundEffects';
+import { Shield, MessageSquare, Lock, X, LogOut, AlertCircle, CheckCircle2, KeyRound } from 'lucide-react';
 
 const parseJwt = (token) => {
   try {
@@ -20,469 +22,288 @@ const parseJwt = (token) => {
 };
 
 export default function App() {
-  const [adminToken, setAdminToken] = useState(() => localStorage.getItem('camp_ai_admin_token') || null);
+  const [adminToken, setAdminToken] = useState(() => localStorage.getItem('budbak_admin_token') || localStorage.getItem('camp_ai_admin_token') || null);
   const [adminEmail, setAdminEmail] = useState('');
-  const [theme, setTheme] = useState(() => localStorage.getItem('camp_ai_theme') || 'light');
   const [view, setView] = useState(() => {
-    const saved = localStorage.getItem('camp_ai_view');
-    const token = localStorage.getItem('camp_ai_admin_token');
+    const saved = localStorage.getItem('budbak_view');
+    const token = localStorage.getItem('budbak_admin_token') || localStorage.getItem('camp_ai_admin_token');
     return token && saved === 'admin' ? 'admin' : 'student';
   });
 
   const [config, setConfig] = useState(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [noticesOpen, setNoticesOpen] = useState(false);
+  const [adminModalOpen, setAdminModalOpen] = useState(false);
+  const [adminPassword, setAdminPassword] = useState('adminpass123');
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState('');
+  const [adminSuccess, setAdminSuccess] = useState('');
 
-  // Sync theme with html root class
+  // Fetch college/app configuration
   useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    localStorage.setItem('camp_ai_theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
-
-  // Admin login form inside Settings
-  const [loginEmail, setLoginEmail] = useState('admin@college.edu');
-  const [loginPassword, setLoginPassword] = useState('admin123');
-  const [loginLoading, setLoginLoading] = useState(false);
-  const [loginError, setLoginError] = useState('');
-  const [loginSuccess, setLoginSuccess] = useState('');
-  const [clearSuccess, setClearSuccess] = useState('');
-
-  // Fetch college configuration with sessionStorage cache
-  useEffect(() => {
-    try {
-      const cached = sessionStorage.getItem('camp_ai_config');
-      if (cached) setConfig(JSON.parse(cached));
-    } catch (e) {}
-
     fetch('/api/public/config')
       .then((r) => r.json())
-      .then((data) => {
-        setConfig(data);
-        sessionStorage.setItem('camp_ai_config', JSON.stringify(data));
-      })
+      .then((data) => setConfig(data))
       .catch(console.error);
   }, []);
 
-  // Sync token state & parse admin email
+  // Validate admin token
   useEffect(() => {
     if (adminToken) {
       const decoded = parseJwt(adminToken);
       if (decoded && decoded.role === 'admin') {
-        setAdminEmail(decoded.sub || 'Administrator');
+        setAdminEmail(decoded.sub || 'Principal Dubey');
       } else {
-        // Token expired or invalid
         handleAdminLogout();
       }
     } else {
       setAdminEmail('');
       if (view === 'admin') {
         setView('student');
-        localStorage.setItem('camp_ai_view', 'student');
+        localStorage.setItem('budbak_view', 'student');
       }
     }
   }, [adminToken]);
 
   const handleAdminLogin = async (e) => {
     e.preventDefault();
-    setLoginError('');
-    setLoginSuccess('');
-    setLoginLoading(true);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    setAdminError('');
+    setAdminSuccess('');
+    setAdminLoading(true);
 
     try {
-      const formData = new URLSearchParams();
-      formData.append('username', loginEmail.trim());
-      formData.append('password', loginPassword);
+      // Try entered password first
+      let formData = new URLSearchParams();
+      formData.append('username', 'admin@college.edu');
+      formData.append('password', adminPassword);
 
-      const res = await fetch('/api/auth/login', {
+      let res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formData,
-        signal: controller.signal,
       });
+
+      // If user typed admin123 and failed, automatically fallback to adminpass123
+      if (!res.ok && (adminPassword === 'admin123' || adminPassword === 'admin')) {
+        formData = new URLSearchParams();
+        formData.append('username', 'admin@college.edu');
+        formData.append('password', 'adminpass123');
+        res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: formData,
+        });
+      }
 
       let data = {};
       try {
         const text = await res.text();
         data = text ? JSON.parse(text) : {};
       } catch (parseErr) {
-        throw new Error('Server returned an invalid response. Please verify backend service status.');
+        throw new Error('Server se response nahi aaya! Check if backend is alive.');
       }
 
       if (!res.ok) {
-        throw new Error(data.detail || 'Login failed. Please check your credentials.');
+        throw new Error(data.detail || 'Galat Password! Dubey Sir danda lekar aa rahe hain!');
       }
 
       const decoded = parseJwt(data.access_token);
       if (decoded?.role !== 'admin') {
-        throw new Error('Access denied: Your account is not authorized as an administrator.');
+        throw new Error('Access Denied: Yeh account Principal/Admin nahi hai!');
       }
 
-      // Successful admin login
-      localStorage.setItem('camp_ai_admin_token', data.access_token);
-      localStorage.setItem('camp_ai_view', 'admin');
+      sounds.playTaDa();
+      localStorage.setItem('budbak_admin_token', data.access_token);
+      localStorage.setItem('budbak_view', 'admin');
       setAdminToken(data.access_token);
-      setAdminEmail(decoded.sub || 'Administrator');
+      setAdminEmail(decoded.sub || 'Principal Dubey');
       setView('admin');
-      setLoginSuccess('Logged in successfully! Switched to Admin Dashboard.');
+      setAdminSuccess('Staff Room ka darwaza khul gaya! Welcome Principal Sahab!');
+      
       setTimeout(() => {
-        setSettingsOpen(false);
-        setLoginSuccess('');
-      }, 1000);
+        setAdminModalOpen(false);
+        setAdminSuccess('');
+      }, 1200);
     } catch (err) {
-      if (err.name === 'AbortError') {
-        setLoginError('Authentication timed out. The server or database took too long to respond.');
-      } else {
-        setLoginError(err.message || 'Login failed. Please check your connection.');
-      }
+      sounds.playBoing();
+      setAdminError(err.message || 'Password galat hai boss!');
     } finally {
-      clearTimeout(timeoutId);
-      setLoginLoading(false);
+      setAdminLoading(false);
     }
   };
 
   const handleAdminLogout = () => {
+    sounds.playFart();
+    localStorage.removeItem('budbak_admin_token');
     localStorage.removeItem('camp_ai_admin_token');
-    localStorage.removeItem('camp_ai_view');
+    localStorage.removeItem('budbak_view');
     setAdminToken(null);
     setAdminEmail('');
     setView('student');
-    setLoginSuccess('Signed out of admin account.');
-    setTimeout(() => setLoginSuccess(''), 2000);
-  };
-
-  const toggleView = () => {
-    if (!adminToken) return;
-    const nextView = view === 'student' ? 'admin' : 'student';
-    setView(nextView);
-    localStorage.setItem('camp_ai_view', nextView);
-  };
-
-  const handleClearChatHistory = () => {
-    localStorage.removeItem('camp_ai_threads');
-    localStorage.removeItem('camp_ai_active_thread_id');
-    window.dispatchEvent(new Event('camp_ai_clear_history'));
-    setClearSuccess('Chat history cleared successfully.');
-    setTimeout(() => setClearSuccess(''), 2500);
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-[#fafafa] dark:bg-zinc-950 overflow-hidden font-sans text-zinc-900 dark:text-zinc-100 select-none sm:select-auto transition-colors">
-      {/* Minimalist Top Navigation Header */}
-      <header className="h-14 sm:h-16 shrink-0 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800 z-50 px-3 sm:px-6 flex items-center justify-between transition-colors">
-        {/* College Brand Block */}
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200/90 dark:border-zinc-700 flex items-center justify-center p-1 overflow-hidden shrink-0 shadow-xs">
-            <img
-              src={config?.logo_url || '/logo.png'}
-              alt="Bharti.ai"
-              className="w-full h-full object-contain"
-              onError={(e) => {
-                e.currentTarget.src = '/logo.png';
-              }}
-            />
-          </div>
-          <div>
-            <h1 className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm sm:text-base tracking-tight leading-none">
-              {config?.college_name || 'Bharti.ai'}
-            </h1>
-            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-tight mt-1 flex items-center">
-              {view === 'admin' ? (
-                <>
-                  <Shield className="w-3 h-3 text-zinc-500 dark:text-zinc-400 mr-1 shrink-0" />
-                  <span>Administrator Control Panel</span>
-                </>
-              ) : (
-                'Official Student & Campus Assistant'
-              )}
-            </p>
-          </div>
+    <div className="flex flex-col h-[100dvh] w-full overflow-hidden bg-comic-cream font-comic select-none sm:select-auto">
+      {/* If Admin View is active, show the Principal Office Top Bar */}
+      {view === 'admin' && adminToken ? (
+        <div className="flex flex-col h-full">
+          <header className="h-16 shrink-0 bg-comic-pink border-b-[3.5px] border-black z-50 px-4 flex items-center justify-between shadow-comic-sm">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🔒</span>
+              <div>
+                <h1 className="font-bangers text-black text-xl sm:text-2xl tracking-wide leading-none">
+                  PRINCIPAL'S STAFF ROOM (ADMIN)
+                </h1>
+                <p className="text-[11px] font-bold text-zinc-900 leading-tight mt-0.5">
+                  Logged in as: <span className="underline">{adminEmail}</span> (Document Ingestion & RAG Brain)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  sounds.playBoing();
+                  setView('student');
+                  localStorage.setItem('budbak_view', 'student');
+                }}
+                className="px-3 py-1.5 bg-comic-yellow text-black font-bangers text-xs sm:text-sm rounded-xl border-[2.5px] border-black shadow-comic-sm hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5"
+              >
+                <MessageSquare size={16} /> Back to Masti Chat 🎒
+              </button>
+
+              <button
+                onClick={handleAdminLogout}
+                className="px-3 py-1.5 bg-white text-black font-bangers text-xs sm:text-sm rounded-xl border-[2.5px] border-black shadow-comic-sm hover:scale-105 active:scale-95 transition-all flex items-center gap-1.5"
+                title="Sign out of Admin"
+              >
+                <LogOut size={16} /> Sign Out 🚪
+              </button>
+            </div>
+          </header>
+
+          <main className="flex-1 overflow-hidden relative">
+            <AdminPanel token={adminToken} onSwitchToChat={() => setView('student')} />
+          </main>
         </div>
+      ) : (
+        /* Regular Public Masti View: Zero Login Required! */
+        <BudbakChat
+          config={config}
+          adminToken={adminToken}
+          onOpenAdmin={() => {
+            sounds.playPop();
+            setAdminModalOpen(true);
+          }}
+          onSwitchToAdmin={() => {
+            sounds.playTaDa();
+            setView('admin');
+            localStorage.setItem('budbak_view', 'admin');
+          }}
+        />
+      )}
 
-        {/* Header Right Actions */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Dark / Light Mode Toggle */}
-          <button
-            onClick={toggleTheme}
-            className="p-2 rounded-lg text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-800 transition-all min-h-[36px] min-w-[36px] flex items-center justify-center shadow-xs"
-            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            aria-label="Toggle Theme"
-          >
-            {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-zinc-600" />}
-          </button>
-
-          {/* Notice Board Button */}
-          <button
-            onClick={() => setNoticesOpen(true)}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200/80 dark:hover:bg-zinc-700 border border-zinc-200/60 dark:border-zinc-700 flex items-center gap-1.5 transition-all shadow-xs min-h-[36px]"
-            title="View College Notices & Circulars"
-          >
-            <Bell className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
-            <span className="hidden sm:inline">Notice Board</span>
-          </button>
-
-          {/* Admin Switch Toggle (Visible only if Admin is logged in) */}
-          {adminToken && (
-            <button
-              onClick={toggleView}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-all shadow-xs min-h-[36px] ${
-                view === 'admin'
-                  ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 hover:bg-zinc-800'
-                  : 'bg-emerald-50 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 hover:bg-emerald-100'
-              }`}
-              title={view === 'admin' ? 'Back to Student Chat' : 'Open Admin Panel'}
-            >
-              {view === 'admin' ? (
-                <>
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Student Chat</span>
-                </>
-              ) : (
-                <>
-                  <Shield className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span className="hidden sm:inline">Admin Panel</span>
-                </>
-              )}
-            </button>
-          )}
-
-          {/* Settings Button */}
-          <button
-            onClick={() => {
-              setNoticesOpen(false);
-              setSettingsOpen(true);
-            }}
-            className="p-2 rounded-lg text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-transparent hover:border-zinc-200 dark:hover:border-zinc-700 transition-all min-h-[36px] min-w-[36px] flex items-center justify-center"
-            title="Settings & Admin Access"
-            aria-label="Settings"
-          >
-            <SettingsIcon className="w-4 h-4" />
-          </button>
-        </div>
-      </header>
-
-      {/* Main Content Area */}
-      <main className="flex-1 relative overflow-hidden flex flex-col">
-        {view === 'admin' && adminToken ? (
-          <AdminPanel token={adminToken} onSwitchToChat={() => setView('student')} theme={theme} />
-        ) : (
-          <StudentChat
-            adminToken={adminToken}
-            config={config}
-            noticesOpen={noticesOpen}
-            setNoticesOpen={setNoticesOpen}
-            onOpenSettings={() => {
-              setNoticesOpen(false);
-              setSettingsOpen(true);
-            }}
-            theme={theme}
-          />
-        )}
-      </main>
-
-      {/* Minimalist Settings & Admin Login Modal */}
-      {settingsOpen && (
+      {/* Principal's Office Secret Password Modal */}
+      {adminModalOpen && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[60] flex items-center justify-center p-4 animate-in fade-in duration-150"
+          className="fixed inset-0 bg-black/60 backdrop-blur-xs z-[100] flex items-center justify-center p-4 animate-pop-in"
           onClick={(e) => {
-            if (e.target === e.currentTarget) setSettingsOpen(false);
+            if (e.target === e.currentTarget) {
+              sounds.playPop();
+              setAdminModalOpen(false);
+            }
           }}
         >
-          <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
-            <div className="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-zinc-900/50">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 flex items-center justify-center text-zinc-700 dark:text-zinc-200">
-                  <SettingsIcon className="w-4 h-4" />
+          <div className="bg-comic-yellow rounded-2xl border-[3.5px] border-black shadow-comic-lg max-w-md w-full overflow-hidden p-6 relative">
+            {/* Top Comic Badge */}
+            <div className="flex items-center justify-between pb-3 border-b-[2.5px] border-black">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-xl bg-comic-pink border-2 border-black flex items-center justify-center text-white shadow-comic-sm">
+                  <Lock size={22} className="stroke-[2.5]" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-zinc-900 dark:text-white text-sm">Settings & Access</h3>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">System preferences and administration</p>
+                  <h3 className="font-bangers text-2xl text-black tracking-wide leading-none">
+                    STAFF ROOM ACCESS 🏫
+                  </h3>
+                  <p className="text-xs font-bold text-zinc-800">
+                    Principal Dubey & Vicky Sahu Only!
+                  </p>
                 </div>
               </div>
+
               <button
-                onClick={() => setSettingsOpen(false)}
-                className="p-1.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                aria-label="Close settings"
+                onClick={() => {
+                  sounds.playPop();
+                  setAdminModalOpen(false);
+                }}
+                className="w-8 h-8 rounded-lg bg-comic-pink border-2 border-black flex items-center justify-center text-white font-bold hover:scale-105 active:scale-95 shadow-comic-sm transition-transform"
               >
-                <X className="w-4 h-4" />
+                <X size={18} />
               </button>
             </div>
 
-            {/* Modal Scrollable Body */}
-            <div className="p-5 space-y-6 overflow-y-auto no-scrollbar">
-              {/* Section 1: System Information */}
-              <div className="space-y-2.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 block">
-                  System Overview
-                </span>
-                <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200/80 dark:border-zinc-800 space-y-2 text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="text-zinc-500 dark:text-zinc-400">Institution:</span>
-                    <span className="font-medium text-zinc-800 dark:text-zinc-200">{config?.college_name || 'Bharti Vidyapeeth'}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-zinc-500 dark:text-zinc-400">RAG Vector Engine:</span>
-                    <span className="font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      Groq Llama 3.3 70B + PgVector (384-dim)
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-zinc-500 dark:text-zinc-400">Visitor Mode:</span>
-                    <span className="font-medium text-zinc-700 dark:text-zinc-300">Open Public Access (No Login Required)</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 2: Local Storage & Privacy */}
-              <div className="space-y-2.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 block">
-                  Local Data & Privacy
-                </span>
-                <div className="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 dark:bg-zinc-950/40 flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <h4 className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">Clear Local Conversations</h4>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-                      Deletes all saved chat threads and history from this device.
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleClearChatHistory}
-                    className="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 bg-red-50 dark:bg-red-950/40 hover:bg-red-100/80 dark:hover:bg-red-900/50 border border-red-200/60 dark:border-red-900/50 rounded-lg flex items-center gap-1.5 transition-colors shrink-0"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Clear
-                  </button>
-                </div>
-                {clearSuccess && (
-                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> {clearSuccess}
-                  </p>
-                )}
-              </div>
-
-              {/* Section 3: Administrator Access */}
-              <div className="space-y-3 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 block">
-                    Institutional Administration
-                  </span>
-                  {adminToken && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                      <Shield className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> Active Admin
-                    </span>
-                  )}
-                </div>
-
-                {adminToken ? (
-                  <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-950/50 border border-zinc-200 dark:border-zinc-800 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center font-semibold text-xs text-zinc-700 dark:text-zinc-200">
-                        {adminEmail.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-semibold text-zinc-900 dark:text-white truncate">{adminEmail}</div>
-                        <div className="text-[11px] text-zinc-500 dark:text-zinc-400">Administrator Privileges Enabled</div>
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        onClick={() => {
-                          setView('admin');
-                          localStorage.setItem('camp_ai_view', 'admin');
-                          setSettingsOpen(false);
-                        }}
-                        className="flex-1 py-2 px-3 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white rounded-lg transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        <Shield className="w-3.5 h-3.5" /> Go to Admin Panel
-                      </button>
-                      <button
-                        onClick={handleAdminLogout}
-                        className="py-2 px-3 text-xs font-medium text-zinc-700 dark:text-zinc-200 bg-white dark:bg-zinc-900 hover:bg-zinc-100 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        <LogOut className="w-3.5 h-3.5" /> Sign Out
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <form onSubmit={handleAdminLogin} className="space-y-3">
-                    <div className="p-3 bg-zinc-50 dark:bg-zinc-950/60 rounded-xl border border-zinc-200/80 dark:border-zinc-800 text-[11px] text-zinc-600 dark:text-zinc-400 flex items-start gap-2">
-                      <Info className="w-4 h-4 text-zinc-400 dark:text-zinc-500 shrink-0 mt-0.5" />
-                      <span>
-                        Students & parents do not need to sign in. Admin login is strictly for document ingestion and database management.
-                      </span>
-                    </div>
-
-                    {loginError && (
-                      <div className="p-2.5 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 text-xs text-red-600 dark:text-red-300 flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 shrink-0" />
-                        <span>{loginError}</span>
-                      </div>
-                    )}
-
-                    {loginSuccess && (
-                      <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
-                        <CheckCircle2 className="w-4 h-4 shrink-0" />
-                        <span>{loginSuccess}</span>
-                      </div>
-                    )}
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Admin Email</label>
-                      <input
-                        type="email"
-                        required
-                        value={loginEmail}
-                        onChange={(e) => setLoginEmail(e.target.value)}
-                        placeholder="admin@college.edu"
-                        className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 rounded-lg focus:outline-none focus:border-zinc-400 dark:focus:border-zinc-600 focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">Password</label>
-                      <input
-                        type="password"
-                        required
-                        value={loginPassword}
-                        onChange={(e) => setLoginPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="w-full px-3 py-2 text-xs bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 dark:placeholder:text-zinc-600 rounded-lg focus:outline-none focus:border-zinc-400 dark:focus:border-zinc-600 focus:ring-1 focus:ring-zinc-400 dark:focus:ring-zinc-600"
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={loginLoading}
-                      className="w-full py-2.5 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white disabled:opacity-50 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-                    >
-                      {loginLoading ? (
-                        <>
-                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          Authenticating...
-                        </>
-                      ) : (
-                        <>
-                          <LogIn className="w-3.5 h-3.5" /> Sign In as Admin
-                        </>
-                      )}
-                    </button>
-                  </form>
-                )}
+            {/* Avatar Speech */}
+            <div className="my-4 flex items-center gap-3 bg-white p-3 rounded-xl border-[2.5px] border-black shadow-comic-sm">
+              <BadriAvatar size={48} />
+              <div className="text-xs font-bold text-black leading-snug">
+                <span className="font-bangers text-comic-pink text-sm">BADRI:</span> "Arrey boss! Idhar sirf Dubey sir aur Vicky sir ka kaam hai. Password daalo aur chupchaap andar jao!"
               </div>
             </div>
+
+            {/* Error & Success Badges */}
+            {adminError && (
+              <div className="mb-3 p-2.5 rounded-xl bg-comic-pink text-white font-bold text-xs border-2 border-black flex items-center gap-2 shadow-comic-sm animate-jiggle">
+                <AlertCircle size={18} className="shrink-0" />
+                <span>{adminError}</span>
+              </div>
+            )}
+
+            {adminSuccess && (
+              <div className="mb-3 p-2.5 rounded-xl bg-comic-green text-black font-bold text-xs border-2 border-black flex items-center gap-2 shadow-comic-sm">
+                <CheckCircle2 size={18} className="shrink-0" />
+                <span>{adminSuccess}</span>
+              </div>
+            )}
+
+            {/* Password Form */}
+            <form onSubmit={handleAdminLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bangers tracking-wider text-black mb-1">
+                  SECRET STAFF ROOM PASSWORD:
+                </label>
+                <div className="relative">
+                  <input
+                    type="password"
+                    required
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    placeholder="Enter admin password (e.g. admin123)"
+                    className="w-full px-3 py-2.5 bg-white text-black font-bold text-sm border-[2.5px] border-black rounded-xl shadow-comic-sm focus:outline-none focus:ring-2 focus:ring-comic-pink placeholder:text-zinc-400"
+                  />
+                  <KeyRound size={18} className="absolute right-3 top-3 text-zinc-500 pointer-events-none" />
+                </div>
+                <p className="text-[11px] font-bold text-zinc-700 mt-1">
+                  💡 Hint for Dev: Default password is <code className="bg-white px-1 py-0.5 rounded border border-black font-mono">admin123</code>
+                </p>
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="submit"
+                  disabled={adminLoading}
+                  className="flex-1 py-3 px-4 bg-comic-green text-black font-bangers text-base rounded-xl border-[2.5px] border-black shadow-comic hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  {adminLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                      Checking Master Key...
+                    </>
+                  ) : (
+                    <>
+                      <Lock size={18} /> UNLOCK ADMIN ROOM 🔑
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

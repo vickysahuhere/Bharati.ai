@@ -3,6 +3,15 @@ from pathlib import Path
 from app.retrieval.search import hybrid_search
 
 def run_eval():
+    try:
+        from app.db.session import pool
+        with pool().connection() as conn:
+            conn.execute("SELECT 1")
+    except Exception as e:
+        print(f"[ERROR] Database is not reachable: {e}")
+        print("Please ensure DATABASE_URL is properly configured and PostgreSQL is running before running evaluation.\n")
+        return
+
     eval_file = Path(__file__).parent / "eval_questions.json"
     if not eval_file.exists():
         print("No eval_questions.json found.")

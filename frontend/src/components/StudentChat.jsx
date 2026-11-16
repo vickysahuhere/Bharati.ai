@@ -159,6 +159,11 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
     const queryText = (customPrompt || input).trim();
     if (!queryText || loading) return;
 
+    if (queryText.length > 1000) {
+      alert("Your query exceeds the maximum allowed length of 1,000 characters.");
+      return;
+    }
+
     setInput('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setLoading(true);
@@ -881,6 +886,7 @@ export default function StudentChat({ adminToken, config, noticesOpen, setNotice
               <textarea
                 ref={textareaRef}
                 value={input}
+                maxLength={1000}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {

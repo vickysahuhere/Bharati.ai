@@ -4,7 +4,10 @@ import re
 import time
 from datetime import datetime
 from typing import Optional, List
-import fitz  # PyMuPDF
+try:
+    import pymupdf as fitz
+except ImportError:
+    import fitz
 
 from app.db.session import pool
 from app.providers.storage import StorageProvider

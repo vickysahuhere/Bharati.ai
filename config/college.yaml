@@ -1,15 +1,15 @@
-# One file per college deployment. Copy to college.yaml.
-college_name: Bharti.ai
-assistant_name: Bharti Vidyapeeth Assistant
-welcome_message: Ask Bharti.ai anything about Bharti Vidyapeeth University
+# Budbak.ai Configuration — Bandbudh & Budbak Edition
+college_name: Budbak.ai
+assistant_name: Bandbudh & Budbak Banter Bot
+welcome_message: Arrey Budhdeb! Apun ka Budbak.ai aagaya re! Pucho jo puchna hai!
 logo_url: "/logo.png"
-primary_color: "#1d4ed8"
-domain: ai.example-college.edu
-supported_languages: [en, hi]
-knowledge_domains: [academic, notices, examinations, events, administration, placements, faq]
+primary_color: "#FFE600"
+domain: budbak.ai
+supported_languages: [en, hi, hinglish]
+knowledge_domains: [academic, notices, examinations, events, administration, placements, faq, fun, banter, roasts, excuses]
 feature_flags:
-  guest_access: false
+  guest_access: true
   feedback: true
 retrieval:
   top_k: 8
-  min_score: 0.25
+  min_score: 0.20

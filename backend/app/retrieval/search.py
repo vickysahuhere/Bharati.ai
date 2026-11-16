@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional
 import json
+import re
 from app.db.session import pool
 from app.providers.registry import get_embedder
 
@@ -73,7 +74,16 @@ def hybrid_search(
     """
 
     # 2. Full-Text Search Query (indexed content + document metadata + chunk section)
-    fts_params = [query] + params + [query, top_k * 2]
+    fts_stop_words = {
+        'what', 'whats', 'is', 'the', 'for', 'a', 'an', 'in', 'on', 'at', 'to', 'of',
+        'with', 'by', 'are', 'was', 'were', 'tell', 'me', 'about', 'can', 'you', 'give',
+        'do', 'does', 'have', 'has'
+    }
+    raw_words = re.findall(r'[a-zA-Z0-9]+', query.lower())
+    content_words = [w for w in raw_words if w not in fts_stop_words]
+    fts_clean_query = " ".join(content_words) if content_words else query
+
+    fts_params = [fts_clean_query] + params + [fts_clean_query, top_k * 2]
     fts_sql = f"""
         SELECT 
             c.id, c.document_id, c.version_id, c.chunk_index, c.content, c.page, c.section, c.metadata,
@@ -170,8 +180,14 @@ def hybrid_search(
     sorted_chunks = sorted(chunk_scores.values(), key=lambda x: x["rrf_score"], reverse=True)
     
     # Filter out irrelevant chunks before reranking
-    # A chunk must have an actual text match (fts_score > 0) OR a genuine vector similarity (vec_score >= 0.30)
-    filtered = [c for c in sorted_chunks if c.get("fts_score", 0) > 0 or c.get("vec_score", 0) >= 0.30]
+    # A candidate chunk must have:
+    # 1. An actual full-text keyword match (fts_score > 0), OR
+    # 2. A genuine vector similarity (vec_score >= min_vec_threshold)
+    min_vec_threshold = min_score
+    filtered = [
+        c for c in sorted_chunks 
+        if c.get("fts_score", 0) > 0 or c.get("vec_score", 0) >= min_vec_threshold
+    ]
     
     # RERANKING & SCORING
     if filtered:
@@ -181,20 +197,42 @@ def hybrid_search(
             texts = [c["content"] for c in filtered]
             scores = reranker.rerank(query, texts)
             
+            reranked = []
             for c, s in zip(filtered, scores):
                 c["rerank_score"] = s
                 # Balance vector/FTS rank with keyword precision so vector relevance is not discarded
                 c["final_score"] = (c.get("rrf_score", 0.0) * 10.0) + (s * 0.8)
                 
+                # Zero-hallucination pruning:
+                # If a chunk has zero FTS match AND zero token overlap AND vector similarity is mediocre,
+                # it is purely irrelevant noise and would confuse the LLM into hallucinating.
+                if c.get("fts_score", 0) <= 0 and s <= 0.0 and c.get("vec_score", 0) < min_score:
+                    continue
+                reranked.append(c)
+                
+            filtered = reranked
             filtered.sort(key=lambda x: x.get("final_score", 0.0), reverse=True)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Reranking failed: {e}")
 
+    # Confidence gate: If no chunks survived or top candidate is ungrounded noise, return empty
+    if not filtered:
+        return []
+
+    top_chunk = filtered[0]
+    top_fts = top_chunk.get("fts_score", 0.0)
+    top_vec = top_chunk.get("vec_score", 0.0)
+    top_rerank = top_chunk.get("rerank_score", 0.0)
+
+    # Require at least one reliable signal on the top result
+    if top_fts <= 0 and top_vec < min_score and top_rerank < 0.10:
+        return []
+
     # SIBLING CHUNK EXPANSION:
     # If the user is querying datesheet, timetable, schedule, syllabus, or multiple semesters,
-    # and the top result belongs to an official circular, include its sibling chunks
-    # so all semesters (Sem 1, 3, 5) and tables in that document are provided in full!
+    # and the top result belongs to a verified confident document, include sibling chunks
+    # so all semesters (Sem 1, 3, 5) and tables in that document are provided in full.
     if filtered:
         top_version_id = filtered[0]["version_id"]
         q_lower = query.lower()
@@ -203,7 +241,8 @@ def hybrid_search(
             'semester', 'sem', 'all', 'routine', 'syllabus', 'fee', 'structure'
         ])
         
-        if needs_full_doc:
+        is_confident = (top_fts > 0 or top_vec >= min_score or top_rerank >= 0.15)
+        if needs_full_doc and is_confident:
             with pool().connection() as conn:
                 try:
                     sibling_rows = conn.execute(
@@ -224,6 +263,7 @@ def hybrid_search(
                     ).fetchall()
 
                     existing_ids = {c["id"] for c in filtered}
+                    top_score = filtered[0].get("final_score", 1.0)
                     for row in sibling_rows:
                         cid = row[0]
                         if cid not in existing_ids:
@@ -245,11 +285,11 @@ def hybrid_search(
                                 "document_type": row[14],
                                 "effective_date": row[15].isoformat() if row[15] else None,
                                 "expiration_date": row[16].isoformat() if row[16] else None,
-                                "vec_score": 1.0,
-                                "fts_score": 1.0,
-                                "rrf_score": 1.0,
-                                "rerank_score": 1.0,
-                                "final_score": 1.0
+                                "vec_score": 0.5,
+                                "fts_score": 0.5,
+                                "rrf_score": 0.5,
+                                "rerank_score": 0.5,
+                                "final_score": top_score * 0.95
                             })
                             existing_ids.add(cid)
                     return filtered[:10]

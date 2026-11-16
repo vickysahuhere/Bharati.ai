@@ -47,6 +47,9 @@ def upload_document(
 
     # Read file bytes to store persistently in Postgres and on disk
     file_bytes = file.file.read()
+    if len(file_bytes) > 30 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File size exceeds maximum allowable limit of 30MB.")
+
     file_key = storage.save_bytes(file_bytes, file.filename)
     
     with pool().connection() as conn:

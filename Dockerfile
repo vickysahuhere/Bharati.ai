@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 ENV FASTEMBED_CACHE_PATH=/srv/models_cache
 ENV HF_HOME=/srv/models_cache
 RUN mkdir -p /srv/models_cache && \
-    python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5', cache_dir='/srv/models_cache', threads=1)" && \
+    python -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-small-en-v1.5', cache_dir='/srv/models_cache', threads=1); TextEmbedding('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2', cache_dir='/srv/models_cache', threads=1)" && \
     chmod -R 777 /srv/models_cache
 
 # Copy backend application source

@@ -1,6 +1,9 @@
 from functools import lru_cache
 from pathlib import Path
-import yaml
+try:
+    import yaml
+except ImportError:
+    yaml = None
 from pydantic_settings import BaseSettings
 
 
@@ -38,5 +41,19 @@ def get_settings() -> Settings:
 
 @lru_cache
 def get_college_config() -> dict:
-    p = Path(get_settings().college_config)
-    return yaml.safe_load(p.read_text()) if p.exists() else {}
+    candidates = [
+        Path(get_settings().college_config),
+        Path(__file__).resolve().parent.parent.parent.parent / "config" / "college.yaml",
+        Path(__file__).resolve().parent.parent.parent / "config" / "college.yaml",
+        Path("config/college.yaml"),
+        Path("../config/college.yaml")
+    ]
+    for p in candidates:
+        if p.exists() and yaml is not None:
+            try:
+                data = yaml.safe_load(p.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    return data
+            except Exception:
+                pass
+    return {}

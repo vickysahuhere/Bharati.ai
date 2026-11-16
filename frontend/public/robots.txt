@@ -1,0 +1,25 @@
+# robots.txt for camp-ai
+User-agent: *
+Disallow: /api/
+Disallow: /admin
+Disallow: /login
+Disallow: /signup
+
+# Disallow aggressive AI training bots from scraping institutional documents
+User-agent: GPTBot
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: Diffbot
+Disallow: /

@@ -1,12 +1,17 @@
 from datetime import datetime, timedelta, timezone
 import jwt
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from typing import Optional
 
 from app.core.config import get_settings
+from app.core.bot_protection import (
+    auth_login_rate_limiter,
+    auth_signup_rate_limiter,
+    verify_honeypot,
+)
 from app.db.session import pool
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
@@ -45,13 +50,30 @@ class SignupRequest(BaseModel):
     email: str
     password: str
     full_name: str
+    hp_field: Optional[str] = None  # Honeypot field for bot trapping
 
 @router.post("/signup", response_model=UserResponse)
-def signup(request: SignupRequest):
+def signup(request: SignupRequest, req: Request):
+    # 1. Anti-bot honeypot check
+    verify_honeypot(request.hp_field)
+
+    # 2. Rate limiting (max 3 signups per 5 mins per IP)
+    auth_signup_rate_limiter.check(req)
+
+    # 3. Input validation against payload tampering
+    clean_email = request.email.strip().lower()
+    clean_name = request.full_name.strip()
+    if not clean_email or len(clean_email) > 120 or "@" not in clean_email or "." not in clean_email:
+        raise HTTPException(status_code=400, detail="Invalid email address format")
+    if not clean_name or len(clean_name) > 100:
+        raise HTTPException(status_code=400, detail="Name must be between 1 and 100 characters")
+    if len(request.password) < 6 or len(request.password) > 128:
+        raise HTTPException(status_code=400, detail="Password must be between 6 and 128 characters")
+
     settings = get_settings()
     hashed_password = get_password_hash(request.password)
     # The first user registered with OWNER_EMAIL gets 'admin' role and 'approved' status
-    is_owner = request.email.lower() == settings.owner_email.lower()
+    is_owner = clean_email == settings.owner_email.lower()
     role = 'admin' if is_owner else 'student'
     user_status = 'approved' if is_owner else 'pending'
     
@@ -63,7 +85,7 @@ def signup(request: SignupRequest):
             ON CONFLICT (email) DO NOTHING
             RETURNING id, email, full_name, role, status
             """,
-            (request.email.lower(), hashed_password, request.full_name, role, user_status)
+            (clean_email, hashed_password, clean_name, role, user_status)
         ).fetchone()
         
         if not row:
@@ -74,7 +96,10 @@ def signup(request: SignupRequest):
         )
 
 @router.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
+def login(req: Request, form_data: OAuth2PasswordRequestForm = Depends()):
+    # Anti-brute-force rate limiting: max 5 login attempts per min per IP
+    auth_login_rate_limiter.check(req)
+
     with pool().connection() as conn:
         row = conn.execute(
             "SELECT id, email, password_hash, role, status FROM users WHERE email = %s", 

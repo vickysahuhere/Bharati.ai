@@ -1,6 +1,4 @@
-import time
 import json
-from collections import defaultdict
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -9,47 +7,13 @@ from typing import List, Optional, Any, Dict
 from app.db.session import pool
 from app.api.auth import get_current_user, get_optional_user, UserResponse
 from app.generation.pipeline import generate_answer, agenerate_answer_stream
+from app.core.bot_protection import (
+    chat_rate_limiter,
+    verify_honeypot,
+    verify_query_payload
+)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
-
-# --- In-Memory Sliding-Window Rate Limiter (Anti-Abuse / Anti-Spam) ---
-_ip_request_timestamps: dict[str, list[float]] = defaultdict(list)
-_last_cleanup_time = time.time()
-RATE_LIMIT_WINDOW = 60.0   # 1 minute window
-RATE_LIMIT_MAX_REQ = 25    # Up to 25 queries per minute per IP
-
-def check_rate_limit(request: Request):
-    global _last_cleanup_time
-    now = time.time()
-    
-    # Periodically clean up stale IPs (every 5 minutes)
-    if now - _last_cleanup_time > 300:
-        stale_cutoff = now - RATE_LIMIT_WINDOW
-        for ip, timestamps in list(_ip_request_timestamps.items()):
-            valid = [t for t in timestamps if t > stale_cutoff]
-            if valid:
-                _ip_request_timestamps[ip] = valid
-            else:
-                _ip_request_timestamps.pop(ip, None)
-        _last_cleanup_time = now
-
-    # Extract real client IP behind Cloudflare or Render proxy
-    client_ip = (
-        request.headers.get("cf-connecting-ip")
-        or request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-        or (request.client.host if request.client else "unknown")
-    )
-    
-    timestamps = _ip_request_timestamps[client_ip]
-    recent = [t for t in timestamps if t > now - RATE_LIMIT_WINDOW]
-    if len(recent) >= RATE_LIMIT_MAX_REQ:
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded. Please wait a moment before sending another query.",
-            headers={"Retry-After": "30"}
-        )
-    recent.append(now)
-    _ip_request_timestamps[client_ip] = recent
 
 
 class SessionResponse(BaseModel):
@@ -63,7 +27,8 @@ class MessageRequest(BaseModel):
     department: Optional[str] = None
     semester: Optional[int] = None
     subject: Optional[str] = None
-    chat_history: Optional[List[Dict[str, str]]] = None
+    chat_history: Optional[List[Dict[str, Any]]] = None
+    hp_field: Optional[str] = None  # Honeypot field for bot trapping
 
 class FeedbackRequest(BaseModel):
     feedback: int # +1 or -1
@@ -78,7 +43,10 @@ async def direct_chat_query(
     Public / Stateless RAG endpoint:
     Answers institutional queries with thread-isolated chat history without requiring a login!
     """
-    check_rate_limit(request)
+    verify_honeypot(req.hp_field)
+    verify_query_payload(req.query, req.chat_history)
+    chat_rate_limiter.check(request)
+
     result = generate_answer(
         query=req.query,
         knowledge_domain=req.knowledge_domain,
@@ -103,7 +71,9 @@ async def direct_chat_stream(
     Real-time Server-Sent Events (SSE) streaming endpoint for instantaneous token delivery.
     Operates asynchronously without blocking any worker thread.
     """
-    check_rate_limit(request)
+    verify_honeypot(req.hp_field)
+    verify_query_payload(req.query, req.chat_history)
+    chat_rate_limiter.check(request)
     
     async def event_generator():
         try:
@@ -192,8 +162,13 @@ def get_session_messages(session_id: str, current_user: Optional[UserResponse] =
 def send_message(
     session_id: str,
     req: MessageRequest,
+    request: Request,
     current_user: Optional[UserResponse] = Depends(get_optional_user)
 ):
+    verify_honeypot(req.hp_field)
+    verify_query_payload(req.query, req.chat_history)
+    chat_rate_limiter.check(request)
+
     with pool().connection() as conn:
         # Check ownership or guest session
         if current_user:
